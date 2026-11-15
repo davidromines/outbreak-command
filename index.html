@@ -222,7 +222,7 @@ const CFG = {
     turret:  { damage: 12,  interval: 0.08, mag: 200, reload: 4, ammo: 1000, range: 80 },
     mortar:  { damage: 150, interval: 4,    mag: 1,   reload: 0, ammo: 20,   range: 350 }, // damage is per zombie inside the blast
     howitzer:{ damage: 400, interval: 12,   mag: 1,   reload: 0, ammo: 30,   range: 1500 },
-    ship:    { damage: 400, interval: 9,    mag: 1,   reload: 0, ammo: 2000, range: 1500 } // one deck cannon: howitzer-like, slow, lots of shells
+    ship:    { damage: 400, interval: 9,    mag: 1,   reload: 0, ammo: 2000, range: 5000 } /* v42: 1500 -> 5000 m */ // one deck cannon: howitzer-like, slow, lots of shells
   },
   // ---- SOUND (all generated in the browser) ----
   SOUND: {
@@ -429,7 +429,7 @@ const CFG = {
   HOWITZER_SCATTER: 16, HOWITZER_SPEED: 1,
   SHIP_COST: 900,        // destroyer: must be placed on water; gun fires on its own, missiles are fired by you
   SHIP_MISSILES: 4, SHIP_GUN_BLAST: 26, SHIP_GUN_FLIGHT: 5, SHIP_GUN_SCATTER: 14,
-  MISSILE_SPEED: 260, MISSILE_BLAST: 40, MISSILE_DAMAGE: 1200,
+  MISSILE_SPEED: 260, MISSILE_BLAST: 100, /* v42: 40 -> 100 m radius (~6x the area) */ MISSILE_DAMAGE: 1200,
   WIRE_COST: 0.5,        // razor wire: $ per metre; slows zombies, stops nobody
   WIRE_SLOW: 0.25,       // zombies move at this fraction of their speed on wire
   TURRET_COST: 200,      // automated sentry gun: fixed in place, can't be infected, zombies must wreck it
@@ -509,13 +509,13 @@ function makeSim(CFG) {
   // buildings: blabel = id of the connected building block under each cell, bheight = metres; gar[i] = garrison index + 1
   const blabel = new Int32Array(NN), bheight = new Uint8Array(NN), gar = new Int32Array(MAXN), lock = new Uint8Array(MAXN) /* 1 = bought garrison, can't leave */, cls = new Uint8Array(MAXN) /* unit class: 0 rifle / APC, 1 sniper, 2 turret (an immobile APC) */, ogar = new Int32Array(ORDERS);
   let wcells = new Int32Array(0);
-  const TR_MAX = 4096, tracers = new Float32Array(TR_MAX * 4), trTtl = new Float32Array(TR_MAX);
+  const TR_MAX = 4096, tracers = new Float32Array(TR_MAX * 4), trTtl = new Float32Array(TR_MAX), trT0 = new Float32Array(TR_MAX);
   const DX = [1, 1, 0, -1, -1, -1, 0, 1], DY = [0, 1, 1, 1, 0, -1, -1, -1];
   const Wd = {}; // weapons after upgrades
   const EVMAX = 3000, ev = new Float32Array(EVMAX * 3); // sound events: type, x, y (read and cleared by the sound engine)
   const S = { ev, evN: 0, evDropped: 0, n: 0, nh: 0, nz: 0, nt: 0, kills: 0, drops: 0, time: 0, tick: 0, trHead: 0, streets: false, planning: false, fresh: true, outbreaks: [], budget: 0, lost: 0, spent: 0, nsel: 0, sel, nw: 0, wallList, wallsDirty: false, zones: [], stations: [], evac: 0, safeDirty: false, na: 0, lostApc: 0, garrisons: [], gar, lock, cls, breaches: 0, bheight, fstate, fires: () => fireList, wireList, msl, strafes: [], missiles: [], gfires: [], nFire: 0, nsh: 0, nhw: 0, lostShip: 0, zk, sub, rounds, strain: { speed: 1, health: 1, reach: 1 }, humans0: CFG.HUMANS, zombies0: 0, started: false, hasWater: false, ndry: 0, ngar: 0, lastGarrison: null, up: {}, freeCrates: 0, cratesOpened: 0, free: { bomb: 0, heli: 0, nuke: 0 }, intel: false, planSites: [], W: Wd,
     wallHp: 1, garHp: CFG.GARRISON_HP, dropCost: CFG.DROP_COST, income: CFG.INCOME, dropSize: CFG.DROP_SIZE, nsn: 0, ntu: 0, lostTurret: 0, nm: 0, lostMortar: 0, collateral: 0, shells: [], blasts: [], planes: [], helis: [], nukes: [], fallout: [], flash: 0, nukesUsed: 0,
-    px, py, type, aim, timer, hp, spd, ammo, tracers, trTtl, TR_MAX, HALF, N, RES, walk, AREA: CFG.AREA, regionR: 0, region: null, popScale: 1, seed: null, fixedStrain: null, siteCount: null, NONE, HUMAN, ZOMBIE, TROOPER, FALLING };
+    px, py, type, aim, timer, hp, spd, ammo, tracers, trTtl, trT0, TR_MAX, HALF, N, RES, walk, AREA: CFG.AREA, regionR: 0, region: null, popScale: 1, seed: null, fixedStrain: null, siteCount: null, NONE, HUMAN, ZOMBIE, TROOPER, FALLING };
   const free = [];
   const rnd = Math.random;
 
@@ -1533,16 +1533,23 @@ function makeSim(CFG) {
           for (let b = -1; b <= 1; b++) { const r0 = cc + b * G - 1; z += zomStart[r0 + 3] - zomStart[r0]; f += preyStart[r0 + 3] - preyStart[r0]; }
           const sc = z - CFG.MORTAR_CIV_WEIGHT * f; if (sc > bs) { bs = sc; tx = wx; ty = wy; found = true; }
         }
+        if ((how || ship) && CFG.HORDE.ON) { // v42: howitzers and the destroyer also shell dense horde blocks (zombies the map shows only as green glow)
+          const HR = Math.ceil(wp.range / HC), hx0 = ((x + HALF) / HC) | 0, hy0 = ((y + HALF) / HC) | 0, hs = Math.max(1, (HR / 60) | 0);
+          for (let yy = Math.max(0, hy0 - HR); yy <= Math.min(HG - 1, hy0 + HR); yy += hs) for (let xx = Math.max(0, hx0 - HR); xx <= Math.min(HG - 1, hx0 + HR); xx += hs) {
+            const k = xx + yy * HG, z = bZ[k]; if (z < CFG.MORTAR_MIN_ZOMBIES) continue;
+            const wx = -HALF + (xx + 0.5) * HC, wy = -HALF + (yy + 0.5) * HC, d2 = (wx - x) * (wx - x) + (wy - y) * (wy - y); if (d2 < min2 || d2 > max2) continue;
+            const sc = z - 0.02 * bH[k]; if (sc > bs) { bs = sc; tx = wx; ty = wy; found = true; } } }
         if (!found) { timer[i] = 0.5; continue; }
         aim[i] = Math.atan2(ty - y, tx - x);
         if (how && btry[i] === i + 1) { // battery salvo: every gun of the team that still has shells fires at the same target
           for (let j = 0; j < S.n; j++) { if (btry[j] !== i + 1 || type[j] !== MORTAR || rounds[j] <= 0) continue;
             const a = rnd() * 6.283, d = Math.sqrt(rnd()) * CFG.HOWITZER_SCATTER;
-            S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: CFG.HOWITZER_FLIGHT + rnd() * 0.4, dz: wp.damage, r: CFG.HOWITZER_BLAST, snd: 7, dmg: 250 }); emit(16, px[j], py[j]);
+            { const T = CFG.HOWITZER_FLIGHT + rnd() * 0.4; S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: T, T, sx: px[j], sy: py[j], dz: wp.damage, r: CFG.HOWITZER_BLAST, bldR: 28, snd: 7, dmg: 250 }); /* v42: buildings take damage only within the old 28 m — the doubled blast is for zombies */ } emit(16, px[j], py[j]);
             rounds[j]--; timer[j] = wp.interval; aim[j] = Math.atan2(ty - py[j], tx - px[j]); }
           continue; }
         const a = rnd() * 6.283, d = Math.sqrt(rnd()) * (ship ? CFG.SHIP_GUN_SCATTER : how ? CFG.HOWITZER_SCATTER : CFG.MORTAR_SCATTER);
-        S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: ship ? CFG.SHIP_GUN_FLIGHT : how ? CFG.HOWITZER_FLIGHT : CFG.MORTAR_FLIGHT, dz: wp.damage,
+        const fT = ship ? Math.max(CFG.SHIP_GUN_FLIGHT, Math.hypot(tx - x, ty - y) / 600) : how ? CFG.HOWITZER_FLIGHT : CFG.MORTAR_FLIGHT;
+        S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: fT, T: fT, sx: x, sy: y, dz: wp.damage,
           r: ship ? CFG.SHIP_GUN_BLAST : how ? CFG.HOWITZER_BLAST : 0, snd: how || ship ? 7 : 0, dmg: how || ship ? 250 : 0 }); emit(ship ? 18 : how ? 16 : 5, x, y);
         rounds[i]--; timer[i] = wp.interval; continue;
       }
@@ -1570,7 +1577,7 @@ function makeSim(CFG) {
       if (best < 0) { adv[i] = 1; timer[i] = 0.2; continue; }
       adv[i] = 0;
       const h = S.trHead; S.trHead = (h + 1) % TR_MAX;
-      tracers[h * 4] = x; tracers[h * 4 + 1] = y; tracers[h * 4 + 2] = px[best]; tracers[h * 4 + 3] = py[best]; trTtl[h] = 0.09; aim[i] = Math.atan2(py[best] - y, px[best] - x);
+      tracers[h * 4] = x; tracers[h * 4 + 1] = y; tracers[h * 4 + 2] = px[best]; tracers[h * 4 + 3] = py[best]; trTtl[h] = trT0[h] = 0.22; aim[i] = Math.atan2(py[best] - y, px[best] - x);
       emit(tur ? 4 : apc ? 3 : sn ? 2 : 1, x, y);
       hit(best, bdh < 0 ? wp.damage * Math.max(CFG.HEIGHT_DMG_MIN, 1 + bdh * CFG.HEIGHT_DMG_PER_M) : wp.damage); // shooting uphill is less accurate
       ammo[i]--; rounds[i]--;
@@ -1592,7 +1599,7 @@ function makeSim(CFG) {
             for (let k = zomStart[cc], e = zomStart[cc + 1]; k < e && shots > 0; k++) { const j = zomIdx[k]; if (type[j] !== ZOMBIE || sub[j]) continue;
               const dx = px[j] - he.hx, dy = py[j] - he.hy; if (dx * dx + dy * dy > r2) continue;
               shots--; const h = S.trHead; S.trHead = (h + 1) % TR_MAX;
-              tracers[h * 4] = he.hx; tracers[h * 4 + 1] = he.hy; tracers[h * 4 + 2] = px[j]; tracers[h * 4 + 3] = py[j]; trTtl[h] = 0.07;
+              tracers[h * 4] = he.hx; tracers[h * 4 + 1] = he.hy; tracers[h * 4 + 2] = px[j]; tracers[h * 4 + 3] = py[j]; trTtl[h] = trT0[h] = 0.18;
               hit(j, CFG.HELI_DAMAGE); emit(9, he.hx, he.hy);
               if (rnd() < CFG.HELI_SPRAY) for (let k2 = preyStart[cc], e2 = preyStart[cc + 1]; k2 < e2; k2++) { const u = preyIdx[k2]; if (type[u] !== HUMAN) continue; // stray rounds
                 const ux = px[u] - px[j], uy = py[u] - py[j]; if (ux * ux + uy * uy < 16) { type[u] = NONE; free.push(u); S.collateral++; break; } }
@@ -1609,7 +1616,7 @@ function makeSim(CFG) {
           for (let xx = gx - br; xx <= gx + br; xx++) { if (xx < 0 || xx >= G) continue; const cc = xx + yy * G;
             for (let k = zomStart[cc], e = zomStart[cc + 1]; k < e; k++) { const j = zomIdx[k]; if (type[j] !== ZOMBIE || sub[j] || st.hit.has(j)) continue;
               const dx = px[j] - cx0, dy = py[j] - cy0; if (dx * dx + dy * dy > w2) continue; st.hit.add(j);
-              if (rnd() < CFG.STRAFE_KILL) { const h = S.trHead; S.trHead = (h + 1) % TR_MAX; tracers[h * 4] = px[j] - st.dx * 40; tracers[h * 4 + 1] = py[j] - st.dy * 40; tracers[h * 4 + 2] = px[j]; tracers[h * 4 + 3] = py[j]; trTtl[h] = 0.12; hit(j, 9999); } }
+              if (rnd() < CFG.STRAFE_KILL) { const h = S.trHead; S.trHead = (h + 1) % TR_MAX; tracers[h * 4] = px[j] - st.dx * 40; tracers[h * 4 + 1] = py[j] - st.dy * 40; tracers[h * 4 + 2] = px[j]; tracers[h * 4 + 3] = py[j]; trTtl[h] = trT0[h] = 0.2; hit(j, 9999); } }
             for (let k = preyStart[cc], e = preyStart[cc + 1]; k < e; k++) { const j = preyIdx[k]; if (type[j] === NONE || type[j] === ZOMBIE || st.hit.has(j)) continue;
               const dx = px[j] - cx0, dy = py[j] - cy0; if (dx * dx + dy * dy > w2) continue; st.hit.add(j);
               if (type[j] === APC) { ahp[j] -= 60; if (ahp[j] <= 0) killAgent(j); } else if (rnd() < CFG.STRAFE_CIV) killAgent(j); } } } }
@@ -1663,7 +1670,7 @@ function makeSim(CFG) {
       const rad = sh.r || CFG.MORTAR_BLAST;
       if (sh.water) { S.shells.splice(q, 1); douse(sh.x, sh.y, rad); if (q % 4 === 0) emit(22, sh.x, sh.y); S.splash.push({ x: sh.x, y: sh.y, r: rad, t: 2.5 }); continue; }
       S.shells.splice(q, 1); S.blasts.push({ x: sh.x, y: sh.y, t: 0.5, r: rad, fire: sh.fire }); emit(sh.snd || (sh.walls ? 7 : 6), sh.x, sh.y);
-      damageBuildings(sh.x, sh.y, rad, sh.bld != null ? sh.bld : (sh.dz || Wd.mortar.damage)); bgHit(sh.x, sh.y, rad, CFG.HORDE.BLAST_KILL, CFG.HORDE.BLAST_CIV);
+      damageBuildings(sh.x, sh.y, sh.bldR || rad, sh.bld != null ? sh.bld : (sh.dz || Wd.mortar.damage)); bgHit(sh.x, sh.y, rad, CFG.HORDE.BLAST_KILL, CFG.HORDE.BLAST_CIV);
       if (sh.fire) { igniteArea(sh.x, sh.y, rad * 1.4); S.gfires.push({ x: sh.x, y: sh.y, r: rad, t: CFG.FIRE_GROUND_TIME }); }
       if (sh.walls) for (let j = 0; j < S.nw; j++) { const c = wallList[j], wx = -HALF + (c % N + 0.5) * RES - sh.x, wy = -HALF + (((c / N) | 0) + 0.5) * RES - sh.y; // bombs level walls
         if ((walk[c] & 12) && wx * wx + wy * wy < rad * rad) { walk[c] = (walk[c] & 2) | 1; S.wallsDirty = true; } }
@@ -1811,7 +1818,7 @@ function makeSim(CFG) {
     a10: [{ m: 1, p: [[8.1, 0], [6.6, 0.75], [1.6, 0.95], [1.0, 8.75], [-1.3, 8.75], [-1.3, 0.95], [-5.9, 0.7], [-5.7, 3.4], [-6.0, 3.9], [-8.1, 3.9], [-8.2, 0]] },
       { both: 1, p: [[-2.0, 1.2], [-2.0, 2.7], [-5.0, 2.7], [-5.0, 1.2], [-2.0, 1.2]] }, { p: [[8.1, 0], [10.2, 0]] }],
     // howitzer (towed 155 mm): long barrel, gun shield, split trails behind
-    howitzer: [{ p: [[9.5, 0.18], [0.4, 0.18], [0.4, -0.18], [9.5, -0.18], [9.5, 0.18]] }, { p: [[9.5, 0.35], [9.5, -0.35]] }, { p: [[0.8, 1.5], [0.8, -1.5], [-1.2, -1.5], [-1.2, 1.5], [0.8, 1.5]] },
+    howitzer: [{ p: [[9.5, 0.25], [0.4, 0.25], [0.4, -0.25], [9.5, -0.25], [9.5, 0.25]] }, { p: [[9.5, 0.35], [9.5, -0.35]] }, { p: [[0.8, 1.5], [0.8, -1.5], [-1.2, -1.5], [-1.2, 1.5], [0.8, 1.5]] },
       { both: 1, p: [[-1.2, 0.6], [-7.2, 2.9], [-7.6, 2.4]] }, { both: 1, p: [[0, 1.9], [0, 2.3], [-0.8, 2.3], [-0.8, 1.9]] }],
     // mortar: baseplate ring, tube, bipod legs
     mortar: [{ p: [[-0.9, 0], [-0.6, 0.65], [0, 0.9], [0.6, 0.65], [0.9, 0], [0.6, -0.65], [0, -0.9], [-0.6, -0.65], [-0.9, 0]] }, { p: [[-0.3, 0.12], [2.6, 0.12], [2.6, -0.12], [-0.3, -0.12]] },
@@ -1820,6 +1827,12 @@ function makeSim(CFG) {
     turretBase: [{ p: [[1.6, 1.6], [1.6, -1.6], [-1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]] }],
     turret: [{ p: [[0, 1], [0.7, 0.7], [1, 0], [0.7, -0.7], [0, -1], [-0.7, -0.7], [-1, 0], [-0.7, 0.7], [0, 1]] }, { both: 1, p: [[0.8, 0.25], [3.4, 0.25]] }] };
   SHAPES.water = SHAPES.ac130;
+  // solid bodies (convex parts, filled olive under the outlines)
+  const FILLS = { howitzer: [[[9.5, 0.18], [0.4, 0.18], [0.4, -0.18], [9.5, -0.18]], [[0.8, 1.5], [-1.2, 1.5], [-1.2, -1.5], [0.8, -1.5]], { both: 1, p: [[-1.2, 0.6], [-1.2, 1.05], [-7.6, 2.4], [-7.2, 2.9]] }, { both: 1, p: [[0, 1.9], [0, 2.3], [-0.8, 2.3], [-0.8, 1.9]] }],
+    mortar: [[[-0.9, 0], [-0.6, 0.65], [0, 0.9], [0.6, 0.65], [0.9, 0], [0.6, -0.65], [0, -0.9], [-0.6, -0.65]], [[-0.3, 0.12], [2.6, 0.12], [2.6, -0.12], [-0.3, -0.12]]],
+    turretBase: [[[1.6, 1.6], [1.6, -1.6], [-1.6, -1.6], [-1.6, 1.6]]],
+    turret: [[[0, 1], [0.7, 0.7], [1, 0], [0.7, -0.7], [0, -1], [-0.7, -0.7], [-1, 0], [-0.7, 0.7]], { both: 1, p: [[0.8, 0.12], [3.4, 0.12], [3.4, 0.38], [0.8, 0.38]] }] };
+  const TMAX = 30000, tbuf = new Float32Array(TMAX * 4);
   const MAXV = sim.type.length, vbuf = new Float32Array((MAXV + 30000 + 40000 + 30000) * 5), lbuf = new Float32Array((sim.TR_MAX * 2 + 8 + 12000 + 32 * 130 + 32 * 44 + 64 * 56 + 64 * 24 + 64 * 80 + 1024 + 2304 + 40 * 32 + 16 * 24) * 4);
   const layer = {
     id: 'agents', type: 'custom', renderingMode: '3d', // shares the depth buffer, so buildings and hills hide what is behind them
@@ -1912,11 +1925,16 @@ function makeSim(CFG) {
       for (const g of sim.garrisons) if (g.count && gn++ < 64) ring(g.ex, g.ey, 6, 16);
       const bStart = lv; gn = 0;
       for (const g of sim.garrisons) if (g.count && gn++ < 64 && g.breach > 1) ring(g.ex, g.ey, 6 * Math.min(1, g.breach / sim.garHp), 12);
-      const tr = sim.tracers, ttl = sim.trTtl; let trStart = lv;
-      for (let k = 0; k < sim.TR_MAX; k++) if (ttl[k] > 0) {
-        lbuf[lv * 4] = tr[k * 4]; lbuf[lv * 4 + 1] = tr[k * 4 + 1]; lv++;
-        lbuf[lv * 4] = tr[k * 4 + 2]; lbuf[lv * 4 + 1] = tr[k * 4 + 3]; lv++;
+      const tr = sim.tracers, ttl = sim.trTtl, tt0 = sim.trT0; let trStart = lv;
+      for (let k = 0; k < sim.TR_MAX; k++) if (ttl[k] > 0) { // v42: a bolt travels from the shooter to the target
+        const f = 1 - ttl[k] / (tt0[k] || 0.1), a0 = Math.max(0, f - 0.35), a1 = Math.min(1, f + 0.05), x0 = tr[k * 4], y0 = tr[k * 4 + 1], dx = tr[k * 4 + 2] - x0, dy = tr[k * 4 + 3] - y0;
+        lbuf[lv * 4] = x0 + dx * a0; lbuf[lv * 4 + 1] = y0 + dy * a0; lv++;
+        lbuf[lv * 4] = x0 + dx * a1; lbuf[lv * 4 + 1] = y0 + dy * a1; lv++;
       }
+      for (let q = 0; q < sim.shells.length && q < 96; q++) { const sh = sim.shells[q]; if (sh.sx === undefined || !sh.T) continue; // artillery / naval shells in flight: a streak along the path
+        const f = 1 - sh.t / sh.T, dx = sh.x - sh.sx, dy = sh.y - sh.sy, L = Math.hypot(dx, dy) || 1, tail = Math.min(0.25, 60 / L);
+        lbuf[lv * 4] = sh.sx + dx * Math.max(0, f - tail); lbuf[lv * 4 + 1] = sh.sy + dy * Math.max(0, f - tail); lv++; lbuf[lv * 4] = sh.sx + dx * f; lbuf[lv * 4 + 1] = sh.sy + dy * f; lv++;
+        if (f < 0.12) { lbuf[lv * 4] = sh.sx; lbuf[lv * 4 + 1] = sh.sy; lv++; lbuf[lv * 4] = sh.sx + dx * 0.12; lbuf[lv * 4 + 1] = sh.sy + dy * 0.12; lv++; } } // muzzle flash line
       const exStart = lv; // incoming shells (shrinking ring at the aim point) and blasts (expanding rings)
       for (let q = 0; q < sim.shells.length && q < 64; q++) ring(sim.shells[q].x, sim.shells[q].y, 3 + sim.shells[q].t * 2, 12);
       for (let q = 0; q < sim.blasts.length && q < 64; q++) { const b = sim.blasts[q], f = 1 - b.t / 0.5; ring(b.x, b.y, (b.r || CFG.MORTAR_BLAST) * f, 20); ring(b.x, b.y, (b.r || CFG.MORTAR_BLAST) * f * 0.55, 20); }
@@ -1925,17 +1943,24 @@ function makeSim(CFG) {
       for (let q = 0; q < sim.gfires.length && q < 40; q++) { const f = sim.gfires[q]; ring(f.x, f.y, f.r * (0.85 + 0.15 * Math.sin(performance.now() / 90 + q)), 16); }
       const airStart = lv, seg = (ax, ay, bx, by) => { lbuf[lv * 4] = ax; lbuf[lv * 4 + 1] = ay; lv++; lbuf[lv * 4] = bx; lbuf[lv * 4 + 1] = by; lv++; };
       // v41 outlines at real proportions (x forward, y right, metres; scaled up a little to read on the map)
+      let tv = 0; const fill = (X, Y, fx, fy, k, sc) => { const F = FILLS[k]; if (!F) return; const rx = -fy, ry = fx;
+        for (const poly of F) for (const m of (poly.both ? [1, -1] : [1])) { const p = poly.p || poly; if (tv + (p.length - 2) * 3 > TMAX) return;
+          const P = (q) => [X + (fx * q[0] + rx * q[1] * m) * sc, Y + (fy * q[0] + ry * q[1] * m) * sc], p0 = P(p[0]);
+          for (let a = 1; a + 1 < p.length; a++) { const p1 = P(p[a]), p2 = P(p[a + 1]); tbuf[tv * 4] = p0[0]; tbuf[tv * 4 + 1] = p0[1]; tv++; tbuf[tv * 4] = p1[0]; tbuf[tv * 4 + 1] = p1[1]; tv++; tbuf[tv * 4] = p2[0]; tbuf[tv * 4 + 1] = p2[1]; tv++; } } };
       const shape = (X, Y, fx, fy, k, sc) => { const S2 = SHAPES[k]; if (!S2) return; const rx = -fy, ry = fx;
         const P = (p, m) => [X + (fx * p[0] + rx * p[1] * m) * sc, Y + (fy * p[0] + ry * p[1] * m) * sc];
         for (const L of S2) { const pts = L.m ? L.p.concat(L.p.slice().reverse().map((p) => [p[0], -p[1]])) : L.p;
           for (const m of (L.both ? [1, -1] : [1])) for (let a = 0; a + 1 < pts.length; a++) { const A = P(pts[a], m), B = P(pts[a + 1], m); seg(A[0], A[1], B[0], B[1]); } } };
       for (let q = 0; q < sim.planes.length && q < 8; q++) { const pl = sim.planes[q], d = pl.v * (pl.age - (pl.delay || CFG.BOMB_DELAY)), X = pl.x + pl.dx * d, Y = pl.y + pl.dy * d;
         shape(X, Y, pl.dx, pl.dy, pl.kind || 'b2', 1.6); }
+      if (rangeSel.size) { const T = sim.type; for (const i of rangeSel) { if (T[i] !== 6 && T[i] !== 7) { rangeSel.delete(i); continue; }
+          const k = T[i] === 7 ? 'ship' : sim.cls[i] === 1 ? 'howitzer' : 'mortar', R = CFG.WEAPONS[k].range * (sim.rangeMul || 1), mn = k === 'ship' ? 60 : k === 'howitzer' ? CFG.HOWITZER_MIN_RANGE : CFG.MORTAR_MIN_RANGE;
+          ring(sim.px[i], sim.py[i], R, 96); ring(sim.px[i], sim.py[i], mn, 32); } }
       { const T = sim.type, C2 = sim.cls, A = sim.aim; let u = 0; const zoom = map.getZoom(); // ground weapons: drawn when zoomed in enough to see them
         if (zoom > 15.2) for (let i = 0; i < sim.n && u < 64; i++) { const t = T[i]; let k = null;
           if (t === 6) k = C2[i] === 1 ? 'howitzer' : 'mortar'; else if (t === 5 && C2[i] === 2) k = 'turret'; if (!k) continue; u++;
-          const a = A[i] || 0; if (k !== 'turret') shape(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), k, 1.4);
-          else { shape(sim.px[i], sim.py[i], 1, 0, 'turretBase', 1.4); shape(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), 'turret', 1.4); } } }
+          const a = A[i] || 0, GS = 2.2; if (k !== 'turret') { fill(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), k, GS); shape(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), k, GS); }
+          else { fill(sim.px[i], sim.py[i], 1, 0, 'turretBase', GS); fill(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), 'turret', GS); shape(sim.px[i], sim.py[i], 1, 0, 'turretBase', GS); shape(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), 'turret', GS); } } }
       for (let q = 0; q < sim.missiles.length && q < 16; q++) { const ms = sim.missiles[q], f = 1 - ms.t / ms.T, X = ms.sx + (ms.tx - ms.sx) * f, Y = ms.sy + (ms.ty - ms.sy) * f, L = Math.hypot(ms.tx - ms.sx, ms.ty - ms.sy) || 1;
         seg(X, Y, X - (ms.tx - ms.sx) / L * 45, Y - (ms.ty - ms.sy) / L * 45); ring(ms.tx, ms.ty, 6 + 10 * (1 - f), 10); } // missile and its target
       for (let q = 0; q < sim.helis.length && q < 8; q++) { const he = sim.helis[q]; // gunship: body + spinning rotor; a marker ring while inbound
@@ -1963,6 +1988,9 @@ function makeSim(CFG) {
         gl.vertexAttribPointer(this.aPos, 2, gl.FLOAT, false, 16, 0); gl.vertexAttribPointer(this.aTs, 2, gl.FLOAT, false, 16, 8);
         if (exStart > trStart) { gl.uniform4f(this.uLine, 1, 0.9, 0.35, 0.9); gl.drawArrays(gl.LINES, trStart, exStart - trStart); }
         if (airStart > exStart) { gl.uniform4f(this.uLine, 1, 0.55, 0.1, 1); gl.drawArrays(gl.LINES, exStart, airStart - exStart); }
+        if (tv) { if (!this.tb) this.tb = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.tb); gl.bufferData(gl.ARRAY_BUFFER, tbuf.subarray(0, tv * 4), gl.DYNAMIC_DRAW);
+          gl.vertexAttribPointer(this.aPos, 2, gl.FLOAT, false, 16, 0); gl.vertexAttribPointer(this.aTs, 2, gl.FLOAT, false, 16, 8); gl.uniform4f(this.uLine, 0.24, 0.3, 0.2, 0.92); gl.drawArrays(gl.TRIANGLES, 0, tv);
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.lb); gl.vertexAttribPointer(this.aPos, 2, gl.FLOAT, false, 16, 0); gl.vertexAttribPointer(this.aTs, 2, gl.FLOAT, false, 16, 8); }
         if (lv > airStart) { gl.uniform4f(this.uLine, 0.92, 0.96, 1, 1); gl.drawArrays(gl.LINES, airStart, lv - airStart); }
       }
     }
@@ -2164,7 +2192,7 @@ function makeSim(CFG) {
     const a0 = -sim.HALF, a1 = -sim.HALF + sim.HG * sim.HC, co = [toLngLat(a0, a0), toLngLat(a1, a0), toLngLat(a1, a1), toLngLat(a0, a1)].map((p) => [p.lng, p.lat]), url = hordeCanvas.toDataURL();
     if (map.getSource('horde')) map.getSource('horde').updateImage({ url, coordinates: co });
     else map.addSource('horde', { type: 'image', url, coordinates: co });
-    if (!map.getLayer('horde')) map.addLayer({ id: 'horde', type: 'raster', source: 'horde', paint: { 'raster-fade-duration': 0, 'raster-opacity': 0.75, 'raster-resampling': 'linear' } }, map.getLayer('bld3dg') ? 'bld3dg' : map.getLayer('agents') ? 'agents' : undefined);
+    if (!map.getLayer('horde')) map.addLayer({ id: 'horde', type: 'raster', source: 'horde', paint: { 'raster-fade-duration': 0, 'raster-opacity': 0.6, 'raster-resampling': 'linear' } }, map.getLayer('agents') ? 'agents' : undefined); // v42: above the buildings, below units
   } catch (e) { console.warn('horde layer', e); } }
   let dmgTick = 0;
   function drainCollapses() { if (++dmgTick % 15 === 0 && sim.dmgQ.length && map.getSource('bldg')) for (const f of sim.dmgQ.splice(0)) map.setFeatureState({ source: 'bldg', id: f }, { dmg: sim.damageOf(f) });
@@ -2364,7 +2392,11 @@ function makeSim(CFG) {
     requestAnimationFrame(panLoop); })(panLast);
   window.addEventListener('blur', () => held.clear());
   // --- right click (without dragging) = deselect: drops the current tool, then the selected troops ---
-  function deselect() { if (zoneDraft.length) { zoneDraft = []; zonePoly.setAttribute('visibility', 'hidden'); costTxt.setAttribute('visibility', 'hidden'); }
+  const rangeSel = new Set();
+  map.on('click', (e) => { if (mode || introOn || trans || !sim) return; const p = toLocal(e.lngLat), T = sim.type; let best = -1, bd = Math.pow(Math.max(18, 26 * 78271.517 * Math.cos(origin.lat * Math.PI / 180) / Math.pow(2, map.getZoom())), 2);
+    for (let i = 0; i < sim.n; i++) { if (T[i] !== 6 && T[i] !== 7) continue; const d = (sim.px[i] - p[0]) ** 2 + (sim.py[i] - p[1]) ** 2; if (d < bd) { bd = d; best = i; } }
+    if (best < 0) { rangeSel.clear(); return; } if (rangeSel.has(best)) rangeSel.delete(best); else rangeSel.add(best); });
+  function deselect() { rangeSel.clear(); if (zoneDraft.length) { zoneDraft = []; zonePoly.setAttribute('visibility', 'hidden'); costTxt.setAttribute('visibility', 'hidden'); }
     if (mode) setMode(mode); else sim.clearSel(); }
   let rdown = null; const cont = map.getCanvasContainer();
   cont.addEventListener('mousedown', (e) => { if (e.button === 2) rdown = [e.clientX, e.clientY]; });

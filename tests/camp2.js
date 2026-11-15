@@ -1,5 +1,7 @@
 // Full campaign with the v32 rules (horde, rising fall line). node camp2.js <bot> <runs>
 const mk = require('./simmod.js'), C = mk.CFG, CP = C.CAMPAIGN, ST = CP.STAGES;
+const OV = JSON.parse(process.argv[4] || '{}'), MAXST = +(process.argv[5] || 4);
+if (OV.cap) C.HORDE.BREAKIN_CAP = OV.cap; if (OV.move) C.HORDE.MOVE = OV.move; if (OV.health) C.ZOMBIE_HEALTH = OV.health; if (OV.walk) C.ZOMBIE_KINDS.forEach((z) => z.speed *= OV.walk);
 const bot = process.argv[2] || 'avg', runs = +process.argv[3] || 1, PERIOD = { avg: 6, good: 3 }[bot], BOMBS = bot === 'good';
 function city(N, RES) { const g = new Uint8Array(N * N), h = new Uint8Array(N * N), half = N * RES / 2;
   for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) { const X = x * RES - half, Y = y * RES - half, mx = ((X % 250) + 250) % 250, my = ((Y % 80) + 80) % 80;
@@ -8,8 +10,8 @@ function city(N, RES) { const g = new Uint8Array(N * N), h = new Uint8Array(N * 
 for (let r = 0; r < runs; r++) {
   let seed = null, seedBg = null, strain = null, bonus = 0, crates = 0; const log = [];
   for (let k = 0; k < ST.length; k++) { const st = ST[k], t0 = Date.now();
-    const S = mk.makeSim(Object.assign({}, C, { AREA: st.area, NAV_RES: st.res, HUMANS: st.humans, START_BUDGET: st.budget + bonus, INCOME: st.income, RANDOM: Object.assign({}, C.RANDOM, { ZOMBIES_PER_SITE: st.zps }) }));
-    S.regionR = st.R; S.fixedStrain = strain; S.siteCount = Math.round(st.sites[0] + Math.random() * (st.sites[1] - st.sites[0]));
+    const S = mk.makeSim(Object.assign({}, C, { AREA: st.area, NAV_RES: st.res, HUMANS: st.humans, START_BUDGET: Math.round(st.budget * (OV.budget || 1)) + bonus, INCOME: st.income, RANDOM: Object.assign({}, C.RANDOM, { ZOMBIES_PER_SITE: st.zps }) }));
+    S.regionR = st.R; S.infect = C.HORDE.INFECT_STAGE ? C.HORDE.INFECT_STAGE[k] : 0; S.fixedStrain = strain; S.siteCount = Math.round(st.sites[0] + Math.random() * (st.sites[1] - st.sites[0]));
     const c = city(S.N, S.RES); S.setWalk(c.g, c.h); strain = S.strain; S.seed = seed; S.seedBg = seedBg; for (let i = 0; i < 30; i++) S.step(1 / 30); S.startOutbreak();
     let reason = 'time';
     for (let sec = 1; sec <= st.time; sec++) { for (let i = 0; i < 30; i++) S.step(1 / 30);
@@ -23,9 +25,9 @@ for (let r = 0; r < runs; r++) {
       const alive = S.allH / S.allH0; if (S.allZ === 0) { reason = 'contained'; break; } if (S.allH < 1) { reason = 'wipe'; break; } if (alive < st.bar) { reason = 'bar'; break; } }
     const alive = S.allH / S.allH0, stars = CP.TIERS.filter((t) => alive >= t).length, contained = reason === 'contained';
     log.push({ stage: k + 1, alive: +(alive * 100).toFixed(1), reason, t: Math.round(S.time), pop: Math.round(S.allH0), zEnd: Math.round(S.allZ), msStep: +((Date.now() - t0) / (S.time * 30)).toFixed(1) });
-    if (reason === 'bar' || reason === 'wipe') break; if (k === ST.length - 1) break;
+    if (reason === 'bar' || reason === 'wipe') break; if (k === ST.length - 1 || k + 1 >= MAXST) break;
     const nx = ST[k + 1]; bonus = stars * CP.STAR_CASH + (contained ? CP.CONTAIN_CASH : 0) + Math.floor(S.budget * CP.BUDGET_CARRY);
     seed = contained ? null : S.zombieSample(Math.min(nx.seedCap, Math.ceil(S.nz * CP.SEED_SHARE))); seedBg = contained ? null : S.hordeSample(Math.min(C.HORDE.SEED_CAP[k + 1] || 0, S.bgZ * CP.SEED_SHARE));
   }
-  console.log(bot, JSON.stringify(log));
+  console.log(process.argv[4] || 'base', bot, JSON.stringify(log.map((l) => [l.stage, l.alive, l.reason])));
 }

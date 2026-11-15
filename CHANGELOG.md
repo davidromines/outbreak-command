@@ -1,5 +1,14 @@
 # Changelog
 
+## v42 — 2026-11-15
+- Shot lines: rifle and gun bolts now travel from the shooter to the target; artillery and naval shells show a streak along their flight path.
+- Click a mortar, howitzer or destroyer to show its range (outer ring) and minimum range (inner ring); click again or elsewhere to hide.
+- Destroyer deck cannon: range 1,500 m → 5,000 m, and it (and howitzers) now also target dense horde blocks, not only visible zombie dots. It never fired before because most zombies are in the horde.
+- Destroyer missiles: blast radius 40 m → 100 m (about 6× the area).
+- Howitzer shells damage buildings only within the old 28 m (the doubled 56 m blast is for zombies); whole districts were turning brown from distant shelling.
+- Horde glow now drawn above the 3D buildings (it was hidden under them, so green 'break-in' buildings looked zombie-free).
+- Guns (howitzer, mortar, turret) get solid olive bodies under their outlines and are drawn larger.
+
 ## v41 — 2026-11-15
 - Real-proportion outline icons: AC-130 (paratrooper drops, water bomber), B-2 (carpet and napalm runs), F-35 (precision strike, now visible), A-10 (strafing).
 - Howitzers, mortars and turrets drawn as outlines when zoomed in, turning to aim where they fire.
