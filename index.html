@@ -2066,18 +2066,20 @@ function makeSim(CFG) {
   // Build our own 3D buildings from the same map data, one feature per building, so each can be removed when it collapses.
   function buildBuildings() {
     const ts = tileSet; if (!ts || !sim.streets) { sim.setBuildings(new Int32Array(sim.N * sim.N).fill(-1), 0); return; }
-    const N = sim.N, RES = sim.RES, h = sim.HALF, n = Math.pow(2, ts.z), wk = sim.walk, fid = new Int32Array(N * N).fill(-1), feats = []; let id = 0;
+    const N = sim.N, RES = sim.RES, h = sim.HALF, n = Math.pow(2, ts.z), wk = sim.walk, fid = new Int32Array(N * N).fill(-1), feats = []; let id = 0; const xs = [];
     for (const t of ts.tl) { const L = t.data.building; if (!L) continue;
       for (const F of L.features) { if (F.type !== 3 || !F.geom.length) continue;
         const rings = F.geom.map((r) => { const o = new Float64Array(r.length);
           for (let q = 0; q < r.length; q += 2) { o[q] = (((t.x + r[q] / L.extent) / n - origin.x) / origin.s + h) / RES; o[q + 1] = (((t.y + r[q + 1] / L.extent) / n - origin.y) / origin.s + h) / RES; } return o; });
         let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9; for (const r of rings) for (let q = 0; q < r.length; q += 2) { if (r[q] < x0) x0 = r[q]; if (r[q] > x1) x1 = r[q]; if (r[q + 1] < y0) y0 = r[q + 1]; if (r[q + 1] > y1) y1 = r[q + 1]; }
         if (x1 < 0 || y1 < 0 || x0 >= N || y0 >= N) continue;
-        let cnt = 0;
-        for (let cy = Math.max(0, Math.floor(y0)); cy <= Math.min(N - 1, Math.floor(y1)); cy++) for (let cx = Math.max(0, Math.floor(x0)); cx <= Math.min(N - 1, Math.floor(x1)); cx++) {
-          const c = cx + cy * N; if (!(wk[c] & 2)) continue; const X = cx + 0.5, Y = cy + 0.5; let ins = false;
-          for (const r of rings) for (let a = 0, b = r.length - 2; a < r.length; b = a, a += 2) if ((r[a + 1] > Y) !== (r[b + 1] > Y) && X < (r[b] - r[a]) * (Y - r[a + 1]) / (r[b + 1] - r[a + 1]) + r[a]) ins = !ins;
-          if (ins) { fid[c] = id; cnt++; } }
+        let cnt = 0; // v40: scanline fill (crossings per row, then spans) instead of a point-in-polygon test per cell — 16 s → well under 1 s in stage 2
+        const cy0 = Math.max(0, Math.floor(y0)), cy1 = Math.min(N - 1, Math.floor(y1));
+        for (let cy = cy0; cy <= cy1; cy++) { const Y = cy + 0.5; xs.length = 0;
+          for (const r of rings) for (let a = 0, b = r.length - 2; a < r.length; b = a, a += 2) if ((r[a + 1] > Y) !== (r[b + 1] > Y)) xs.push((r[b] - r[a]) * (Y - r[a + 1]) / (r[b + 1] - r[a + 1]) + r[a]);
+          if (xs.length < 2) continue; xs.sort((u, v) => u - v);
+          for (let q = 0; q + 1 < xs.length; q += 2) { const ca = Math.max(0, Math.ceil(xs[q] - 0.5)), cb = Math.min(N - 1, Math.ceil(xs[q + 1] - 0.5) - 1); // cells whose centre lies inside the span
+            for (let cx = ca, c = ca + cy * N; cx <= cb; cx++, c++) if (wk[c] & 2) { fid[c] = id; cnt++; } } }
         if (!cnt) continue;
         // A map building can have several separate parts: split it into polygons by ring winding (outer rings share the
         // first ring's direction, holes run the other way) — packing them into one polygon draws long slivers between parts.

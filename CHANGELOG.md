@@ -1,5 +1,8 @@
 # Changelog
 
+## v40.1 — 2026-11-15
+- Building load: scanline fill instead of a point-in-polygon test per map cell. Measured on David's PC before the fix: 2.5 s freeze in stage 1, 16.4 s in stage 2.
+
 ## v40 — 2026-11-15
 - Howitzer is now a 3-gun battery ($900) that fires 3-shell salvos; blast radius doubled to 56 m.
 - F3 performance readout.
