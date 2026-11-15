@@ -479,7 +479,7 @@ function makeSim(CFG) {
   const MAXN = (CFG.MAX_HUMANS || CFG.HUMANS) + 6000 + CFG.MAX_TROOPERS;
   const NONE = 0, HUMAN = 1, ZOMBIE = 2, TROOPER = 3, FALLING = 4, APC = 5, MORTAR = 6, SHIP = 7;
 
-  const px = new Float32Array(MAXN), py = new Float32Array(MAXN), btry = new Int32Array(MAXN) /* howitzer battery: leader index + 1 */;
+  const px = new Float32Array(MAXN), py = new Float32Array(MAXN), btry = new Int32Array(MAXN) /* howitzer battery: leader index + 1 */, aim = new Float32Array(MAXN) /* last firing direction (radians), for drawing */;
   const type = new Uint8Array(MAXN), hp = new Uint16Array(MAXN), zk = new Uint8Array(MAXN) /* zombie kind */, sub = new Uint8Array(MAXN) /* 1 = under water */,
     rounds = new Uint16Array(MAXN) /* total ammunition left */, rst = new Float32Array(MAXN) /* restock progress */, ammo = new Uint8Array(MAXN), adv = new Uint8Array(MAXN), sel = new Uint8Array(MAXN), mode = new Uint8Array(MAXN);
   // trooper mode: 0 = hunt (advance on zombies), 1 = hold position, 2+k = moving under order k
@@ -515,7 +515,7 @@ function makeSim(CFG) {
   const EVMAX = 3000, ev = new Float32Array(EVMAX * 3); // sound events: type, x, y (read and cleared by the sound engine)
   const S = { ev, evN: 0, evDropped: 0, n: 0, nh: 0, nz: 0, nt: 0, kills: 0, drops: 0, time: 0, tick: 0, trHead: 0, streets: false, planning: false, fresh: true, outbreaks: [], budget: 0, lost: 0, spent: 0, nsel: 0, sel, nw: 0, wallList, wallsDirty: false, zones: [], stations: [], evac: 0, safeDirty: false, na: 0, lostApc: 0, garrisons: [], gar, lock, cls, breaches: 0, bheight, fstate, fires: () => fireList, wireList, msl, strafes: [], missiles: [], gfires: [], nFire: 0, nsh: 0, nhw: 0, lostShip: 0, zk, sub, rounds, strain: { speed: 1, health: 1, reach: 1 }, humans0: CFG.HUMANS, zombies0: 0, started: false, hasWater: false, ndry: 0, ngar: 0, lastGarrison: null, up: {}, freeCrates: 0, cratesOpened: 0, free: { bomb: 0, heli: 0, nuke: 0 }, intel: false, planSites: [], W: Wd,
     wallHp: 1, garHp: CFG.GARRISON_HP, dropCost: CFG.DROP_COST, income: CFG.INCOME, dropSize: CFG.DROP_SIZE, nsn: 0, ntu: 0, lostTurret: 0, nm: 0, lostMortar: 0, collateral: 0, shells: [], blasts: [], planes: [], helis: [], nukes: [], fallout: [], flash: 0, nukesUsed: 0,
-    px, py, type, timer, hp, spd, ammo, tracers, trTtl, TR_MAX, HALF, N, RES, walk, AREA: CFG.AREA, regionR: 0, region: null, popScale: 1, seed: null, fixedStrain: null, siteCount: null, NONE, HUMAN, ZOMBIE, TROOPER, FALLING };
+    px, py, type, aim, timer, hp, spd, ammo, tracers, trTtl, TR_MAX, HALF, N, RES, walk, AREA: CFG.AREA, regionR: 0, region: null, popScale: 1, seed: null, fixedStrain: null, siteCount: null, NONE, HUMAN, ZOMBIE, TROOPER, FALLING };
   const free = [];
   const rnd = Math.random;
 
@@ -1150,7 +1150,7 @@ function makeSim(CFG) {
   };
   S.precisionBomb = function (x, y) {
     if (S.planning || !(Math.abs(x) < HALF && Math.abs(y) < HALF) || !spend(CFG.PRECISION_COST)) return false;
-    S.shells.push({ x: x + (rnd() - 0.5) * 4, y: y + (rnd() - 0.5) * 4, t: CFG.PRECISION_DELAY, r: CFG.PRECISION_BLAST, dz: CFG.PRECISION_DAMAGE, dmg: 600, walls: true, snd: 7 }); S.inbound.push({ k: 'precision', x, y, t: CFG.PRECISION_DELAY });
+    S.shells.push({ x: x + (rnd() - 0.5) * 4, y: y + (rnd() - 0.5) * 4, t: CFG.PRECISION_DELAY, r: CFG.PRECISION_BLAST, dz: CFG.PRECISION_DAMAGE, dmg: 600, walls: true, snd: 7 }); S.inbound.push({ k: 'precision', x, y, t: CFG.PRECISION_DELAY }); { const a = rnd() * 6.283; S.planes.push({ x, y, dx: Math.cos(a), dy: Math.sin(a), v: 260, age: 0, delay: CFG.PRECISION_DELAY - 1.2, kind: 'f35' }); } // the jet passes over just before the bomb lands
     emit(14, x, y); return true;
   };
   S.strafe = function (x0, y0, x1, y1) { // A-10: a line of 30 mm fire, narrow and deadly, civilians included
@@ -1158,7 +1158,7 @@ function makeSim(CFG) {
     let dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy); if (len < 10) { dx = 1; dy = 0; len = 150; x0 -= 75; } else { dx /= len; dy /= len; }
     len = Math.min(len, CFG.STRAFE_LEN);
     S.strafes.push({ x0, y0, dx, dy, len, t: CFG.STRAFE_DELAY, prog: 0, hit: new Set() }); S.inbound.push({ k: 'strafe', x: x0 + dx * len / 2, y: y0 + dy * len / 2, t: CFG.STRAFE_DELAY });
-    S.planes.push({ x: x0, y: y0, dx, dy, v: len / CFG.STRAFE_TIME, age: 0, delay: CFG.STRAFE_DELAY, jet: 1 });
+    S.planes.push({ x: x0, y: y0, dx, dy, v: len / CFG.STRAFE_TIME, age: 0, delay: CFG.STRAFE_DELAY, jet: 1, kind: 'a10' });
     return true;
   };
   S.firebomb = function (x0, y0, x1, y1) {
@@ -1196,7 +1196,7 @@ function makeSim(CFG) {
     let dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy); if (len < 10) { dx = 1; dy = 0; len = 120; x0 -= 60; } else { dx /= len; dy /= len; }
     len = Math.min(len, CFG.WATER_RUN_LEN); const nb = Math.max(2, Math.round(len / CFG.WATER_SPACING)) + 1, gap = 0.08;
     for (let k = 0; k < nb; k++) S.shells.push({ x: x0 + dx * len * k / (nb - 1), y: y0 + dy * len * k / (nb - 1), t: CFG.WATER_DELAY + k * gap, r: CFG.WATER_BLAST, water: true, snd: 22 }); S.inbound.push({ k: 'water', x: x0 + dx * len / 2, y: y0 + dy * len / 2, t: CFG.WATER_DELAY });
-    S.planes.push({ x: x0, y: y0, dx, dy, v: len / ((nb - 1) * gap), age: 0, delay: CFG.WATER_DELAY - 0.6 }); emit(14, x0 + dx * len / 2, y0 + dy * len / 2);
+    S.planes.push({ x: x0, y: y0, dx, dy, v: len / ((nb - 1) * gap), age: 0, delay: CFG.WATER_DELAY - 0.6, kind: 'water' }); emit(14, x0 + dx * len / 2, y0 + dy * len / 2);
     return true;
   };
   // ---- air support (only once the outbreak is live) ----
@@ -1324,7 +1324,7 @@ function makeSim(CFG) {
     if (len > CFG.DROP_MAX_LEN) { dx *= CFG.DROP_MAX_LEN / len; dy *= CFG.DROP_MAX_LEN / len; }
     const L = Math.hypot(dx, dy), D = CFG.DROP_DELAY, ux = L > 5 ? dx / L : 1, uy = L > 5 ? dy / L : 0;
     S.pendingDrops.push({ x0, y0, dx, dy, len, size: S.dropSize, t: D });
-    S.planes.push({ x: x0 - ux * 40, y: y0 - uy * 40, dx: ux, dy: uy, v: (Math.max(L, 20) + 80) / 1.6, age: 0, delay: D, transport: 1 });
+    S.planes.push({ x: x0 - ux * 40, y: y0 - uy * 40, dx: ux, dy: uy, v: (Math.max(L, 20) + 80) / 1.6, age: 0, delay: D, transport: 1, kind: 'ac130' });
     S.inbound.push({ k: 'drop', x: x0 + dx / 2, y: y0 + dy / 2, t: D });
     S.drops++; emit(13, x0 + dx / 2, y0 + dy / 2);
     return true;
@@ -1534,11 +1534,12 @@ function makeSim(CFG) {
           const sc = z - CFG.MORTAR_CIV_WEIGHT * f; if (sc > bs) { bs = sc; tx = wx; ty = wy; found = true; }
         }
         if (!found) { timer[i] = 0.5; continue; }
+        aim[i] = Math.atan2(ty - y, tx - x);
         if (how && btry[i] === i + 1) { // battery salvo: every gun of the team that still has shells fires at the same target
           for (let j = 0; j < S.n; j++) { if (btry[j] !== i + 1 || type[j] !== MORTAR || rounds[j] <= 0) continue;
             const a = rnd() * 6.283, d = Math.sqrt(rnd()) * CFG.HOWITZER_SCATTER;
             S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: CFG.HOWITZER_FLIGHT + rnd() * 0.4, dz: wp.damage, r: CFG.HOWITZER_BLAST, snd: 7, dmg: 250 }); emit(16, px[j], py[j]);
-            rounds[j]--; timer[j] = wp.interval; }
+            rounds[j]--; timer[j] = wp.interval; aim[j] = Math.atan2(ty - py[j], tx - px[j]); }
           continue; }
         const a = rnd() * 6.283, d = Math.sqrt(rnd()) * (ship ? CFG.SHIP_GUN_SCATTER : how ? CFG.HOWITZER_SCATTER : CFG.MORTAR_SCATTER);
         S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: ship ? CFG.SHIP_GUN_FLIGHT : how ? CFG.HOWITZER_FLIGHT : CFG.MORTAR_FLIGHT, dz: wp.damage,
@@ -1569,7 +1570,7 @@ function makeSim(CFG) {
       if (best < 0) { adv[i] = 1; timer[i] = 0.2; continue; }
       adv[i] = 0;
       const h = S.trHead; S.trHead = (h + 1) % TR_MAX;
-      tracers[h * 4] = x; tracers[h * 4 + 1] = y; tracers[h * 4 + 2] = px[best]; tracers[h * 4 + 3] = py[best]; trTtl[h] = 0.09;
+      tracers[h * 4] = x; tracers[h * 4 + 1] = y; tracers[h * 4 + 2] = px[best]; tracers[h * 4 + 3] = py[best]; trTtl[h] = 0.09; aim[i] = Math.atan2(py[best] - y, px[best] - x);
       emit(tur ? 4 : apc ? 3 : sn ? 2 : 1, x, y);
       hit(best, bdh < 0 ? wp.damage * Math.max(CFG.HEIGHT_DMG_MIN, 1 + bdh * CFG.HEIGHT_DMG_PER_M) : wp.damage); // shooting uphill is less accurate
       ammo[i]--; rounds[i]--;
@@ -1793,7 +1794,33 @@ function makeSim(CFG) {
       'else{vec2 q=vec2(c.x/0.47,c.y/0.15);float r=dot(q,q);if(r>1.0)discard;e=r>0.6?1.0:(abs(c.x)<0.1&&abs(c.y)<0.07?1.0:0.0);}' +
       'gl_FragColor=vec4(mix(v_c,vec3(1.0),e*0.9),u_alpha);return;}' +
     'if(v_sq<0.5&&v_small<0.5&&dot(c,c)>0.25)discard;gl_FragColor=vec4(v_c,u_alpha);}';
-  const MAXV = sim.type.length, vbuf = new Float32Array((MAXV + 30000 + 40000 + 30000) * 5), lbuf = new Float32Array((sim.TR_MAX * 2 + 8 + 32 * 130 + 32 * 44 + 64 * 56 + 64 * 24 + 64 * 80 + 1024 + 2304 + 40 * 32 + 16 * 24) * 4);
+  // aircraft and gun outlines: m = mirror the half-outline across the centre line; both = draw on both sides
+  const SHAPES = {
+    // AC-130 (C-130 airframe): long fuselage, straight high wing with four engines and props, conventional tail
+    ac130: [{ m: 1, p: [[15, 0], [14.2, 1], [12.2, 1.9], [3.2, 2.1], [2.4, 20.2], [0.2, 20.2], [-1.2, 2.1], [-10.2, 1.9], [-11.6, 1.7], [-12.6, 8.1], [-14.6, 8.1], [-14.9, 1.1], [-15.6, 0]] },
+      { both: 1, p: [[5.6, 4.7], [5.6, 6.3], [0, 6.3], [0, 4.7], [5.6, 4.7]] }, { both: 1, p: [[5.0, 9.9], [5.0, 11.5], [0.3, 11.5], [0.3, 9.9], [5.0, 9.9]] },
+      { both: 1, p: [[6.0, 3.6], [6.0, 7.4]] }, { both: 1, p: [[5.4, 8.8], [5.4, 12.6]] }, { p: [[13, 0.9], [11.4, 0.9], [11.4, -0.9], [13, -0.9]] }],
+    water: null,
+    // B-2 Spirit: flying wing, swept leading edge, double-W sawtooth trailing edge
+    b2: [{ m: 1, p: [[10.5, 0], [8.6, 3.2], [-6.4, 26.2], [-8.6, 24.8], [-3.6, 17.2], [-8.8, 9.4], [-6.0, 4.6], [-10.4, 0]] },
+      { both: 1, p: [[3.8, 2.6], [1.6, 5.8], [-1.6, 5.4]] }, { p: [[7.4, 1.4], [6.4, 0], [7.4, -1.4]] }],
+    // F-35: chined nose, trapezoid wings, all-moving tailplanes, twin canted fins
+    f35: [{ m: 1, p: [[7.9, 0], [6.6, 0.55], [4.4, 1.15], [2.6, 1.9], [0.6, 2.2], [-3.4, 5.35], [-4.4, 5.35], [-4.1, 2.3], [-4.8, 2.3], [-7.0, 3.5], [-7.9, 3.4], [-7.9, 0.9], [-8.4, 0]] },
+      { both: 1, p: [[-3.9, 1.5], [-6.9, 2.4]] }, { p: [[5.4, 0.4], [3.6, 0.6], [3.6, -0.6], [5.4, -0.4]] }],
+    // A-10: straight wing, engines high on the rear fuselage, twin fins on the tailplane tips
+    a10: [{ m: 1, p: [[8.1, 0], [6.6, 0.75], [1.6, 0.95], [1.0, 8.75], [-1.3, 8.75], [-1.3, 0.95], [-5.9, 0.7], [-5.7, 3.4], [-6.0, 3.9], [-8.1, 3.9], [-8.2, 0]] },
+      { both: 1, p: [[-2.0, 1.2], [-2.0, 2.7], [-5.0, 2.7], [-5.0, 1.2], [-2.0, 1.2]] }, { p: [[8.1, 0], [10.2, 0]] }],
+    // howitzer (towed 155 mm): long barrel, gun shield, split trails behind
+    howitzer: [{ p: [[9.5, 0.18], [0.4, 0.18], [0.4, -0.18], [9.5, -0.18], [9.5, 0.18]] }, { p: [[9.5, 0.35], [9.5, -0.35]] }, { p: [[0.8, 1.5], [0.8, -1.5], [-1.2, -1.5], [-1.2, 1.5], [0.8, 1.5]] },
+      { both: 1, p: [[-1.2, 0.6], [-7.2, 2.9], [-7.6, 2.4]] }, { both: 1, p: [[0, 1.9], [0, 2.3], [-0.8, 2.3], [-0.8, 1.9]] }],
+    // mortar: baseplate ring, tube, bipod legs
+    mortar: [{ p: [[-0.9, 0], [-0.6, 0.65], [0, 0.9], [0.6, 0.65], [0.9, 0], [0.6, -0.65], [0, -0.9], [-0.6, -0.65], [-0.9, 0]] }, { p: [[-0.3, 0.12], [2.6, 0.12], [2.6, -0.12], [-0.3, -0.12]] },
+      { both: 1, p: [[1.7, 0], [2.2, 1.1]] }],
+    // turret: square base (fixed) + round gun head with a twin barrel (turns to aim)
+    turretBase: [{ p: [[1.6, 1.6], [1.6, -1.6], [-1.6, -1.6], [-1.6, 1.6], [1.6, 1.6]] }],
+    turret: [{ p: [[0, 1], [0.7, 0.7], [1, 0], [0.7, -0.7], [0, -1], [-0.7, -0.7], [-1, 0], [-0.7, 0.7], [0, 1]] }, { both: 1, p: [[0.8, 0.25], [3.4, 0.25]] }] };
+  SHAPES.water = SHAPES.ac130;
+  const MAXV = sim.type.length, vbuf = new Float32Array((MAXV + 30000 + 40000 + 30000) * 5), lbuf = new Float32Array((sim.TR_MAX * 2 + 8 + 12000 + 32 * 130 + 32 * 44 + 64 * 56 + 64 * 24 + 64 * 80 + 1024 + 2304 + 40 * 32 + 16 * 24) * 4);
   const layer = {
     id: 'agents', type: 'custom', renderingMode: '3d', // shares the depth buffer, so buildings and hills hide what is behind them
     onAdd(m, gl) {
@@ -1897,9 +1924,18 @@ function makeSim(CFG) {
       for (let q = 0; q < sim.fallout.length && q < 4; q++) { const fo = sim.fallout[q]; ring(fo.x, fo.y, fo.r, 64); ring(fo.x, fo.y, fo.r * (0.5 + 0.5 * fo.t / CFG.NUKE_FALLOUT_TIME), 48); }
       for (let q = 0; q < sim.gfires.length && q < 40; q++) { const f = sim.gfires[q]; ring(f.x, f.y, f.r * (0.85 + 0.15 * Math.sin(performance.now() / 90 + q)), 16); }
       const airStart = lv, seg = (ax, ay, bx, by) => { lbuf[lv * 4] = ax; lbuf[lv * 4 + 1] = ay; lv++; lbuf[lv * 4] = bx; lbuf[lv * 4 + 1] = by; lv++; };
-      for (let q = 0; q < sim.planes.length && q < 8; q++) { const pl = sim.planes[q], d = pl.v * (pl.age - (pl.delay || CFG.BOMB_DELAY)), X = pl.x + pl.dx * d, Y = pl.y + pl.dy * d, nx = -pl.dy, ny = pl.dx; // bomber
-        seg(X - pl.dx * 22, Y - pl.dy * 22, X + pl.dx * 22, Y + pl.dy * 22); seg(X + pl.dx * 6, Y + pl.dy * 6, X - pl.dx * 8 + nx * 22, Y - pl.dy * 8 + ny * 22); seg(X + pl.dx * 6, Y + pl.dy * 6, X - pl.dx * 8 - nx * 22, Y - pl.dy * 8 - ny * 22);
-        seg(X - pl.dx * 22 + nx * 8, Y - pl.dy * 22 + ny * 8, X - pl.dx * 22 - nx * 8, Y - pl.dy * 22 - ny * 8); }
+      // v41 outlines at real proportions (x forward, y right, metres; scaled up a little to read on the map)
+      const shape = (X, Y, fx, fy, k, sc) => { const S2 = SHAPES[k]; if (!S2) return; const rx = -fy, ry = fx;
+        const P = (p, m) => [X + (fx * p[0] + rx * p[1] * m) * sc, Y + (fy * p[0] + ry * p[1] * m) * sc];
+        for (const L of S2) { const pts = L.m ? L.p.concat(L.p.slice().reverse().map((p) => [p[0], -p[1]])) : L.p;
+          for (const m of (L.both ? [1, -1] : [1])) for (let a = 0; a + 1 < pts.length; a++) { const A = P(pts[a], m), B = P(pts[a + 1], m); seg(A[0], A[1], B[0], B[1]); } } };
+      for (let q = 0; q < sim.planes.length && q < 8; q++) { const pl = sim.planes[q], d = pl.v * (pl.age - (pl.delay || CFG.BOMB_DELAY)), X = pl.x + pl.dx * d, Y = pl.y + pl.dy * d;
+        shape(X, Y, pl.dx, pl.dy, pl.kind || 'b2', 1.6); }
+      { const T = sim.type, C2 = sim.cls, A = sim.aim; let u = 0; const zoom = map.getZoom(); // ground weapons: drawn when zoomed in enough to see them
+        if (zoom > 15.2) for (let i = 0; i < sim.n && u < 64; i++) { const t = T[i]; let k = null;
+          if (t === 6) k = C2[i] === 1 ? 'howitzer' : 'mortar'; else if (t === 5 && C2[i] === 2) k = 'turret'; if (!k) continue; u++;
+          const a = A[i] || 0; if (k !== 'turret') shape(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), k, 1.4);
+          else { shape(sim.px[i], sim.py[i], 1, 0, 'turretBase', 1.4); shape(sim.px[i], sim.py[i], Math.cos(a), Math.sin(a), 'turret', 1.4); } } }
       for (let q = 0; q < sim.missiles.length && q < 16; q++) { const ms = sim.missiles[q], f = 1 - ms.t / ms.T, X = ms.sx + (ms.tx - ms.sx) * f, Y = ms.sy + (ms.ty - ms.sy) * f, L = Math.hypot(ms.tx - ms.sx, ms.ty - ms.sy) || 1;
         seg(X, Y, X - (ms.tx - ms.sx) / L * 45, Y - (ms.ty - ms.sy) / L * 45); ring(ms.tx, ms.ty, 6 + 10 * (1 - f), 10); } // missile and its target
       for (let q = 0; q < sim.helis.length && q < 8; q++) { const he = sim.helis[q]; // gunship: body + spinning rotor; a marker ring while inbound

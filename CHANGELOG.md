@@ -1,5 +1,9 @@
 # Changelog
 
+## v41 — 2026-11-15
+- Real-proportion outline icons: AC-130 (paratrooper drops, water bomber), B-2 (carpet and napalm runs), F-35 (precision strike, now visible), A-10 (strafing).
+- Howitzers, mortars and turrets drawn as outlines when zoomed in, turning to aim where they fire.
+
 ## v40.1 — 2026-11-15
 - Building load: scanline fill instead of a point-in-polygon test per map cell. Measured on David's PC before the fix: 2.5 s freeze in stage 1, 16.4 s in stage 2.
 
