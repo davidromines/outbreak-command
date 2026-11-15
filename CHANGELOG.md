@@ -1,5 +1,13 @@
 # Changelog
 
+## v43 — 2026-11-15
+- Balance: at most 25 zombies per 40 m block can break into buildings at once (was 40). Bot tests, stages 1–2, alive at the end of each stage:
+  - current: 85–93% / 48–54%
+  - break-in cap 25: 89–92% / 62–69%  ← applied
+  - budgets +25%: 83–87% / 43–47%
+  - cap 25 + budgets +25%: 92% / 66–68%
+  - walkers −10% speed: 88–100% / 51–89% (high variance)
+
 ## v42 — 2026-11-15
 - Shot lines: rifle and gun bolts now travel from the shooter to the target; artillery and naval shells show a streak along their flight path.
 - Click a mortar, howitzer or destroyer to show its range (outer ring) and minimum range (inner ring); click again or elsewhere to hide.

@@ -335,7 +335,7 @@ const CFG = {
     SHOW_BREAKIN: 5,       // v39.1: buildings turn green only with at least this many zombies on their block
     INFECT_STAGE: [0.03, 0.035, 0.042, 0.05], // v39: gentler in the early campaign stages (David lost stages 1-2 badly at 0.05)
     INFECT: 0.05,          // (v32 tuned by simulation) sheltering civilians each zombie in the block infects per second...
-    BREAKIN_CAP: 40,       // ...but only this many zombies per block can be breaking in at once
+    BREAKIN_CAP: 25,       // v43: 40 -> 25 after bot tests (stage 2 alive 48-54% -> 62-69%)       // ...but only this many zombies per block can be breaking in at once
     SPILL: 0.3,            // share of a block's extra zombies that spill into the neighbouring blocks each second
     MOVE: 0.06,            // share of a block's horde that moves to the next block toward people each second (~2.4 m/s)
     ACTIVE_R: 300,         // the horde becomes real zombies within this range of your units...
