@@ -2624,7 +2624,7 @@ function makeSim(CFG) {
       const PK = { rifle: 0.85, sniper: 0.95, apc: 0.95, turret: 0.75, minigun: 0.85 };
       for (const k in SAMPLES) { const list = []; for (let i = 1; i <= SAMPLES[k]; i++) { try { list.push(normalize(await fetchBuf(k + i + '.mp3'), PK[k])); } catch (e) {} }
         if (list.length) { sampleBuf[k] = list; bank[k] = list; } }
-      let far = null, near = null; try { far = await fetchBuf('explfar1.mp3'); near = await fetchBuf('explnear1.mp3'); } catch (e) { return; }
+      let far = null, near = null; try { far = await fetchBuf('boom1.mp3'); near = await fetchBuf('boom3.mp3'); } catch (e) { try { far = await fetchBuf('explfar1.mp3'); near = await fetchBuf('explnear1.mp3'); } catch (e2) { return; } }
       for (const k in LAYER) { if (!bank[k]) continue; bank[k] = bank[k].map((b) => { const c = new AudioBuffer({ length: b.length, numberOfChannels: 2, sampleRate: SR });
         for (let ch = 0; ch < 2; ch++) c.copyToChannel(b.getChannelData(Math.min(ch, b.numberOfChannels - 1)), ch);
         mixInto(c, near, LAYER[k] * 0.9, 0); mixInto(c, far, LAYER[k], 0.01); return normalize(c, 1); }); }
@@ -2633,6 +2633,17 @@ function makeSim(CFG) {
       const zl = async (pre, n, pk) => { const out = []; for (let i = 1; i <= n; i++) { try { out.push(normalize(await fetchBuf(pre + i + '.mp3'), pk)); } catch (e) {} } return out; };
       const zg = await zl('zgroan', 9, 0.8); if (zg.length) { bank.groan = zg; loops.horde = normalize(chorus(zg, 10), 0.8);
         try { loopSrc.horde.stop(); } catch (e) {} const s2 = ctx.createBufferSource(); s2.buffer = loops.horde; s2.loop = true; s2.connect(horde); s2.start(); loopSrc.horde = s2; }
+      // artillery, mortars, booms, aircraft, radio (v47)
+      const set = async (k, names, pk) => { const out = []; for (const n of names) { try { out.push(normalize(await fetchBuf(n + '.mp3'), pk)); } catch (e) {} } if (out.length) bank[k] = out; return out; };
+      await set('mortar', ['mort1', 'mort2', 'mort3', 'mort4', 'mort5'], 0.9);
+      await set('howitzer', ['arty1', 'arty3', 'arty2'], 1);
+      await set('naval', ['arty2', 'arty3'], 1);
+      const bs = await set('boomraw', ['boom3', 'boom4'], 1); if (bs.length && bank.shell) bank.shell = bank.shell.concat(bs);
+      const bb = await set('boombig', ['boom1', 'boom2'], 1); if (bb.length && bank.bomb) bank.bomb = bank.bomb.concat(bb);
+      await set('whistle', ['whistle1', 'whistle2', 'whistle3'], 0.8); await set('bombfall', ['bombfall1'], 0.8);
+      await set('jet', ['jet1', 'jet2'], 0.95); await set('prop', ['prop2', 'prop1'], 0.95);
+      await set('radio', ['radio1', 'radio2', 'radio3', 'radio4', 'radio5', 'radio6', 'radio7', 'radio8', 'radio9'], 0.8);
+      try { const rl = normalize(await fetchBuf('rotorloop.mp3'), 0.8); loops.rotor = rl; try { loopSrc.rotor.stop(); } catch (e) {} const s3 = ctx.createBufferSource(); s3.buffer = rl; s3.loop = true; s3.connect(rotor); s3.start(); loopSrc.rotor = s3; } catch (e) {}
       const zb = await zl('zbite', 3, 0.85); if (zb.length) bank.zbite = zb;
       const zd = await zl('zdeath', 1, 0.7); if (zd.length) bank.zdeath = zd;
     }
@@ -2674,7 +2685,7 @@ function makeSim(CFG) {
       if (!running) ctx.suspend();
     }
     // ---------- placing a sound in the world ----------
-    const VOICES = { zbite: 3, zdeath: 3, rifle: 10, sniper: 4, apc: 5, turret: 6, mortar: 4, shell: 6, bomb: 6, nuke: 2, minigun: 3, brrrt: 2, howitzer: 4, naval: 4, missile: 3, napalm: 3, collapse: 4, splash: 3, groan: 6, scream: 4 };
+    const VOICES = { zbite: 3, zdeath: 3, whistle: 4, bombfall: 2, jet: 2, prop: 2, radio: 1, rifle: 10, sniper: 4, apc: 5, turret: 6, mortar: 4, shell: 6, bomb: 6, nuke: 2, minigun: 3, brrrt: 2, howitzer: 4, naval: 4, missile: 3, napalm: 3, collapse: 4, splash: 3, groan: 6, scream: 4 };
     function voice(cat, dur) { const now = ctx.currentTime, a = busy[cat] || (busy[cat] = []), max = VOICES[cat] || SC.VOICES[cat] || 4;
       for (let i = a.length - 1; i >= 0; i--) if (a[i] < now) a.splice(i, 1); if (a.length >= max) return false; a.push(now + dur); return true; }
     let lis = { x: 0, y: 0, alt: 300, W: 1, H: 1, cx: 0 };
@@ -2735,19 +2746,31 @@ function makeSim(CFG) {
       const s = ctx.createBufferSource(); s.buffer = nb('white'); s.loop = true; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.6; f.frequency.setValueAtTime(1800, t); f.frequency.linearRampToValueAtTime(600, t + dur); s.connect(f); f.connect(e); s.start(t); s.stop(t + dur + 0.1);
       const r = ctx.createBufferSource(); r.buffer = nb('brown'); r.loop = true; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 180; const rg = ctx.createGain(); rg.gain.value = 1.3; r.connect(rf); rf.connect(rg); rg.connect(e); r.start(t); r.stop(t + dur + 0.1); }
     // ---------- every frame: read the simulation's events, place them, and set the mix ----------
-    let lastKills = 0;
+    let lastKills = 0, radioT = 25;
+    // a recorded aircraft pass: pans across the screen over the length of the recording
+    function flyRec(kind, g) { const b = bank[kind]; if (!b || !b.length) return; const buf = b[(rnd() * b.length) | 0], now = ctx.currentTime, side = rnd() < 0.5 ? -1 : 1;
+      const src = ctx.createBufferSource(); src.buffer = buf; src.playbackRate.value = 0.95 + rnd() * 0.1; const gn = ctx.createGain(); gn.gain.value = g;
+      const p = ctx.createStereoPanner(); p.pan.setValueAtTime(-0.85 * side, now); p.pan.linearRampToValueAtTime(0.85 * side, now + buf.duration);
+      const wet = ctx.createGain(); wet.gain.value = 0.3; src.connect(gn); gn.connect(p); p.connect(detail); gn.connect(wet); wet.connect(revIn); src.start(now); }
     window.__snd = { bank: () => Object.fromEntries(Object.entries(bank).map(([k, v]) => [k, v.length + ':' + (v[0] ? v[0].duration.toFixed(2) : 0)])), samples: () => Object.keys(sampleBuf), state: () => ctx && ctx.state };
     function update(el, live) {
       const ev = sim.ev, n = sim.evN; sim.evN = 0;
       if (!ctx || ctx.state !== 'running' || el <= 0) return;
       listener(); const now = ctx.currentTime, close = clamp(1 - (lis.alt - 60) / 900, 0, 1); // 1 = street level, 0 = high above the city
       let heat = 0, played = 0;
+      if (live && ready) {
+        // incoming whistle for artillery shells in their last 1.7 s; the falling-bomb scream for a bomb run
+        if (bank.whistle) for (let q = 0; q < sim.shells.length && q < 80; q++) { const sh = sim.shells[q]; if (sh._w || !sh.T || sh.t > 1.7) continue; sh._w = 1; const w = where(sh.x, sh.y); if (w.on && w.d < 1500 && rnd() < 0.5) emitAt('whistle', w.pan, w.d, w.d, 0.9); }
+        if (bank.bombfall && sim.inbound) for (const ib of sim.inbound) { if (ib._w || ib.k !== 'bomb' || ib.t > 3.2) continue; ib._w = 1; const w = where(ib.x, ib.y); emitAt('bombfall', w.pan, Math.min(w.d, 600), Math.min(w.dh, 600), 1.2); }
+        // radio chatter now and then
+        if (bank.radio && (radioT -= el) <= 0) { radioT = 40 + rnd() * 50; emitAt('radio', rnd() * 0.6 - 0.3, 60, 0, 0.5); }
+      }
       if (bank.zdeath && sim.kills > lastKills) { if (live && rnd() < Math.min(0.4, (sim.kills - lastKills) * 0.03)) { const d = 200 + rnd() * 700; emitAt('zdeath', rnd() * 1.4 - 0.7, d, d, 0.7); } } lastKills = sim.kills;
       for (let k = 0; k < n; k++) {
         const t = ev[k * 3], x = ev[k * 3 + 1], y = ev[k * 3 + 2]; heat += t <= 4 || t === 9 ? 1 : t <= 7 ? 6 : 0;
         if (!ready || played >= SC.MAX_PER_FRAME) continue;
         if (t === 12) { if (voice('alarm', 1.3)) alarm(panned(0, 0.35), now + 0.02); continue; }
-        if (t === 13 || t === 14) { if (voice('plane', 4)) flyover(detail, now + 0.05, t === 14 ? 1.5 : 1.2, t === 13); continue; }
+        if (t === 13 || t === 14) { if (voice('plane', 4)) { const fk = t === 13 ? 'prop' : 'jet'; if (bank[fk]) flyRec(fk, t === 13 ? 1.0 : 1.2); else flyover(detail, now + 0.05, t === 14 ? 1.5 : 1.2, t === 13); } continue; }
         if (t === 10 && bank.zbite && rnd() < 0.6) { const wb = where(x, y); if (wb.on && wb.d < 900) emitAt('zbite', wb.pan, wb.d, wb.dh, 1.0); }
         const e = EV[t]; if (!e) continue; const w = where(x, y);
         if (!e[2] && (!w.on || w.d > 900)) continue;                                   // small arms: only what you can see, within ~1 km

@@ -1,5 +1,9 @@
 # Changelog
 
+## v47 — 2026-11-15
+- Recorded artillery and air: mortar launches, howitzer and naval guns, big explosions layered into shells and bombs, incoming-shell whistles (last 1.7 s of flight), falling-bomb scream before bomb runs, jet flyovers (strikes/bombers/F-35), propeller flyover for supply drops (pitched down for the AC-130), recorded helicopter rotor loop for the gunship.
+- Military radio chatter every 40–90 s during play.
+
 ## v46 — 2026-11-15
 - Recorded zombie voices: single groans and the horde chorus are built from 9 recordings; a bite/lunge plays when someone is turned; death groans as kills mount.
 - Aircraft flyovers louder (still synth until recordings arrive).
