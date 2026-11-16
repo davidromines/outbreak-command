@@ -240,10 +240,10 @@ const CFG = {
   CAMPAIGN: {
     STAGES: [
       // v29: much faster growth — about 0.9, 8, 40 and 125 km² (each stage 3-9x the last)
-      { name: 'Ground zero',   area: 1600,  res: 3, R: 650,  humans: 6000,  time: 300, budget: 1200, income: 5,  sites: [1, 1], zps: [40, 90],   seedCap: 0,    bar: 0.05 },
-      { name: 'The district',  area: 3600,  res: 3, R: 2000, humans: 20000, time: 480, budget: 2000, income: 10, sites: [1, 2], zps: [40, 90],   seedCap: 250,  bar: 0.10 },
-      { name: 'The city',      area: 8000,  res: 5, R: 4500, humans: 40000, time: 660, budget: 3500, income: 18, sites: [2, 3], zps: [60, 150],  seedCap: 500,  bar: 0.15 },
-      { name: 'The metro',     area: 14000, res: 8, R: 8000, humans: 60000, time: 900, budget: 6000, income: 30, sites: [3, 4], zps: [80, 200],  seedCap: 900,  bar: 0.20 }
+      { name: 'Ground zero',   area: 1600,  res: 3, R: 650,  humans: 6000,  time: 300, budget: 1200, income: 5,  sites: [1, 1], zps: [40, 90],   seedCap: 0,    bar: 0.05, people: 8000 },
+      { name: 'The district',  area: 3600,  res: 3, R: 2000, humans: 20000, time: 480, budget: 2000, income: 10, sites: [1, 2], zps: [40, 90],   seedCap: 250,  bar: 0.10, people: 40000 },
+      { name: 'The city',      area: 8000,  res: 5, R: 4500, humans: 40000, time: 660, budget: 3500, income: 18, sites: [2, 3], zps: [60, 150],  seedCap: 500,  bar: 0.15, people: 100000 },
+      { name: 'The metro',     area: 14000, res: 8, R: 8000, humans: 60000, time: 900, budget: 6000, income: 30, sites: [3, 4], zps: [80, 200],  seedCap: 900,  bar: 0.20, people: 200000 }
     ],
     START_TOOLS: ['drop', 'cmd', 'wall', 'gate', 'zone'], // everything else is bought as blueprints at the requisition screen
     TOOLS: [ // id = tool, rarity = how rare its blueprint is
@@ -333,9 +333,9 @@ const CFG = {
     M2_PER_PERSON: 30,     // real population: one person per this much floor space
     MAX_PEOPLE: 4000000,   // cap on the sheltering population
     SHOW_BREAKIN: 5,       // v39.1: buildings turn green only with at least this many zombies on their block
-    INFECT_STAGE: [0.03, 0.035, 0.042, 0.05], // v39: gentler in the early campaign stages (David lost stages 1-2 badly at 0.05)
+    INFECT_STAGE: [0.0045, 0.00525, 0.0063, 0.0075], // v48: 15% of v39's rates, to match the smaller per-stage populations (was 0.03-0.05)
     INFECT: 0.05,          // (v32 tuned by simulation) sheltering civilians each zombie in the block infects per second...
-    BREAKIN_CAP: 25, DEFEND: 1,       // v43: 40 -> 25 after bot tests (stage 2 alive 48-54% -> 62-69%)       // ...but only this many zombies per block can be breaking in at once
+    BREAKIN_CAP: 25, DEFEND: 1, FIRE_EFF: 0.5, // v48: share of shots into the horde (green glow) that hit; each hit does normal damage       // v43: 40 -> 25 after bot tests (stage 2 alive 48-54% -> 62-69%)       // ...but only this many zombies per block can be breaking in at once
     SPILL: 0.3,            // share of a block's extra zombies that spill into the neighbouring blocks each second
     MOVE: 0.06,            // share of a block's horde that moves to the next block toward people each second (~2.4 m/s)
     ACTIVE_R: 300,         // the horde becomes real zombies within this range of your units...
@@ -726,7 +726,7 @@ function makeSim(CFG) {
     const fl = new Float32Array(HN); let tot = 0;
     for (let c = 0; c < NN; c++) { const w = walk[c]; if (!w) continue; const hc = hcOf(-HALF + (c % N + 0.5) * RES, -HALF + (((c / N) | 0) + 0.5) * RES);
       if (w & 1) hwalk[hc] = 1; if (w & 2) { hbld[hc]++; const f = Math.max(1, Math.round((bheight[c] || CFG.FLOOR_HEIGHT) / CFG.FLOOR_HEIGHT)) * RES * RES; fl[hc] += f; tot += f; } }
-    const want = Math.min(CFG.HORDE.MAX_PEOPLE, tot / CFG.HORDE.M2_PER_PERSON) - S.humans0; if (want <= 0 || !tot) return;
+    const want = Math.min(S.peopleCap || CFG.HORDE.MAX_PEOPLE, tot / CFG.HORDE.M2_PER_PERSON) - S.humans0; // v48: per-stage cap so the horde stays killable if (want <= 0 || !tot) return;
     for (let k = 0; k < HN; k++) { if (fl[k]) { bH[k] = want * fl[k] / tot; hwalk[k] = 1; } } S.bgH = S.bgH0 = want; hFloor = fl; }
   let hFloor = null;
   function bgHit(x, y, r, kz, kh) { // a blast over the horde grid
@@ -737,6 +737,13 @@ function makeSim(CFG) {
         if (bZ[k] > 0) { const dz = bZ[k] * kz * f; bZ[k] -= dz; S.bgKills += dz; S.kills += dz; } if (bH[k] > 0) bH[k] -= bH[k] * kh * f; } }
     S.kills = Math.round(S.kills); }
   S.bgHit = bgHit;
+  function hordeTarget(x, y, r, area) { // densest-and-nearest horde block within r of (x,y); area -1/-2 = any area
+    const R = Math.ceil(r / HC), hx = ((x + HALF) / HC) | 0, hy = ((y + HALF) / HC) | 0; let best = -1, bs = 0.99;
+    for (let yy = Math.max(0, hy - R); yy <= Math.min(HG - 1, hy + R); yy++) for (let xx = Math.max(0, hx - R); xx <= Math.min(HG - 1, hx + R); xx++) {
+      const k = xx + yy * HG, z = bZ[k]; if (z < 1) continue; if (area >= 0 && blab && blab[k] !== area) continue;
+      const dx = -HALF + (xx + 0.5) * HC - x, dy = -HALF + (yy + 0.5) * HC - y, d = Math.sqrt(dx * dx + dy * dy); if (d > r + HC * 0.5) continue;
+      const sc = z / (1 + d / 60); if (sc > bs) { bs = sc; best = k; } }
+    return best; }
   let cK = null, cW = null, p0 = null;
   S.shelterLevels = function () { if (!bfid || !fcount || !hFloor) return null; const nf = fcount.length;
     if (!cK || cK.length !== fcells.length) { cK = new Int32Array(fcells.length); cW = new Float32Array(fcells.length);
@@ -1574,6 +1581,14 @@ function makeSim(CFG) {
           } }
         if (best >= 0 && stopAt === R) stopAt = Math.min(R, r + 1);
       }
+      if (best < 0 && CFG.HORDE.ON && CFG.HORDE.FIRE_EFF > 0) { // v48: no visible zombie in range — fire into the horde blocks in range (same street area)
+        const hk2 = hordeTarget(x, y, maxR, grec ? -2 : labAt(x, y));
+        if (hk2 >= 0) { const zh = CFG.ZOMBIE_HEALTH * (S.strainHp || 1), kill = Math.min(bZ[hk2], wp.damage / zh * CFG.HORDE.FIRE_EFF);
+          bZ[hk2] -= kill; S.bgKills += kill; S.kills += kill; S.hordeDirty = true; adv[i] = 0;
+          const tx2 = -HALF + ((hk2 % HG) + rnd()) * HC, ty2 = -HALF + (((hk2 / HG) | 0) + rnd()) * HC, h = S.trHead; S.trHead = (h + 1) % TR_MAX;
+          tracers[h * 4] = x; tracers[h * 4 + 1] = y; tracers[h * 4 + 2] = tx2; tracers[h * 4 + 3] = ty2; trTtl[h] = trT0[h] = 0.22; aim[i] = Math.atan2(ty2 - y, tx2 - x);
+          emit(tur ? 4 : apc ? 3 : sn ? 2 : 1, x, y); ammo[i]--; rounds[i]--;
+          timer[i] = (ammo[i] === 0 ? wp.reload : wp.interval) * (grec ? (sn ? 1 / (1 + Math.min(CFG.ROOF_RATE_MAX, grec.h * CFG.ROOF_RATE_PER_M)) : CFG.GARRISON_FIRE_MULT) : 1); continue; } }
       if (best < 0) { adv[i] = 1; timer[i] = 0.2; continue; }
       adv[i] = 0;
       const h = S.trHead; S.trHead = (h + 1) % TR_MAX;
@@ -1604,6 +1619,9 @@ function makeSim(CFG) {
               if (rnd() < CFG.HELI_SPRAY) for (let k2 = preyStart[cc], e2 = preyStart[cc + 1]; k2 < e2; k2++) { const u = preyIdx[k2]; if (type[u] !== HUMAN) continue; // stray rounds
                 const ux = px[u] - px[j], uy = py[u] - py[j]; if (ux * ux + uy * uy < 16) { type[u] = NONE; free.push(u); S.collateral++; break; } }
             } } }
+      if (shots > 0 && CFG.HORDE.ON && CFG.HORDE.FIRE_EFF > 0) { const k = hordeTarget(he.hx, he.hy, CFG.HELI_RANGE, -1); // v48: the rest of the burst goes into the horde
+        if (k >= 0) { const kill = Math.min(bZ[k], shots * CFG.HELI_DAMAGE / (CFG.ZOMBIE_HEALTH * (S.strainHp || 1)) * CFG.HORDE.FIRE_EFF); bZ[k] -= kill; S.bgKills += kill; S.kills += kill;
+          const h = S.trHead; S.trHead = (h + 1) % TR_MAX; tracers[h * 4] = he.hx; tracers[h * 4 + 1] = he.hy; tracers[h * 4 + 2] = -HALF + ((k % HG) + rnd()) * HC; tracers[h * 4 + 3] = -HALF + (((k / HG) | 0) + rnd()) * HC; trTtl[h] = trT0[h] = 0.18; emit(9, he.hx, he.hy); } }
     }
     // ---- A-10 strafing runs: a narrow strip of cannon fire sweeps along the line ----
     for (let q = S.strafes.length - 1; q >= 0; q--) { const st = S.strafes[q];
@@ -1741,7 +1759,7 @@ function makeSim(CFG) {
   }
   function buildStage() { // a fresh sim sized for this stage, around the run's starting point
     const run = camp.run, st = STAGES[run.stage];
-    clearHorde(); sim = makeSim(stageCfg(run.stage)); sim.regionR = st.R; sim.infect = CFG.HORDE.INFECT_STAGE[run.stage]; try { updateLocks(); } catch (e) {} sim.fixedStrain = run.strain; sim.siteCount = rint(st.sites);
+    clearHorde(); sim = makeSim(stageCfg(run.stage)); sim.regionR = st.R; sim.infect = CFG.HORDE.INFECT_STAGE[run.stage]; sim.peopleCap = st.people; try { updateLocks(); } catch (e) {} sim.fixedStrain = run.strain; sim.siteCount = rint(st.sites);
     sim.seed = run.seed; sim.seedBg = run.seedBg || null; seenBreaches = 0; seenRec = 0; if (!trans) fit(); loadStreets(); loadElevation();
   }
   function clearHorde() { try { if (map.getLayer('horde')) map.removeLayer('horde'); if (map.getSource('horde')) map.removeSource('horde'); } catch (e) {} hordeCanvas = null; }

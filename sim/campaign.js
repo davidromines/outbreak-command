@@ -27,7 +27,7 @@ function runCampaign(job, packDir) {
   const maxStage = Math.min(ST.length, job.maxStage || ST.length);
   for (let k = 0; k < maxStage; k++) { const st = ST[k], t0 = Date.now();
     const cfg = Object.assign({}, C, { AREA: st.area, NAV_RES: st.res, HUMANS: st.humans, START_BUDGET: st.budget + run.bonus, INCOME: st.income, RANDOM: Object.assign({}, C.RANDOM, { ZOMBIES_PER_SITE: st.zps }) });
-    const S = makeSim(cfg); S.regionR = st.R; S.infect = C.HORDE.INFECT_STAGE[k]; S.fixedStrain = run.strain; S.siteCount = Math.round(st.sites[0] + rng() * (st.sites[1] - st.sites[0]));
+    const S = makeSim(cfg); S.regionR = st.R; S.infect = C.HORDE.INFECT_STAGE[k]; S.peopleCap = st.people; S.fixedStrain = run.strain; S.siteCount = Math.round(st.sites[0] + rng() * (st.sites[1] - st.sites[0]));
     const pf = packDir && job.city !== 'synthetic' ? path.join(packDir, job.city + '_s' + (k + 1) + '.ocmap.gz') : null;
     let mapSrc = 'synthetic';
     if (pf && fs.existsSync(pf)) { mapSrc = 'pack'; const P = loadPack(pf); if (P.hdr.N !== S.N) throw new Error('pack ' + pf + ' has N=' + P.hdr.N + ' but stage needs ' + S.N);

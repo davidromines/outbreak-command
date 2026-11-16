@@ -12,6 +12,7 @@ const KNOBS = [
   { id: 'h_breakin', lo: 0.5, hi: 1.6, apply: (C, m) => { C.HORDE.BREAKIN_CAP = Math.max(3, Math.round(C.HORDE.BREAKIN_CAP * m)); } },
   { id: 'h_move', lo: 0.6, hi: 1.5, apply: (C, m) => { C.HORDE.MOVE *= m; } },
   { id: 'h_spill', lo: 0.5, hi: 1.6, apply: (C, m) => { C.HORDE.SPILL = Math.min(0.9, C.HORDE.SPILL * m); } },
+  { id: 'pop_cap', lo: 0.5, hi: 2.0, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { if (s.people) s.people = Math.round(s.people * m); }) },
   { id: 'h_people', lo: 0.6, hi: 1.5, apply: (C, m) => { C.HORDE.M2_PER_PERSON /= m; } },
   { id: 'h_seed', lo: 0.5, hi: 1.6, apply: (C, m) => { C.HORDE.SEED_CAP = C.HORDE.SEED_CAP.map((v) => Math.round(v * m)); C.CAMPAIGN.SEED_SHARE = Math.min(0.8, C.CAMPAIGN.SEED_SHARE * m); } },
   // infantry and ground units
@@ -40,6 +41,7 @@ const KNOBS = [
   { id: 'income', lo: 0.5, hi: 2.0, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { s.income *= m; }) },
   { id: 'stage_time', lo: 0.7, hi: 1.4, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { s.time = Math.round(s.time * m); }) },
   { id: 'fall_line', lo: 0.5, hi: 1.6, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { s.bar = Math.min(0.5, s.bar * m); }) },
+  { id: 'h_fire', lo: 0.5, hi: 3.0, apply: (C, m) => { C.HORDE.FIRE_EFF *= m; } },
   { id: 'h_defend', lo: 0.2, hi: 1.0, apply: (C, m) => { C.HORDE.DEFEND = (C.HORDE.DEFEND || 1) * m; } },
   { id: 'infect_s3', lo: 0.6, hi: 1.2, apply: (C, m) => { C.HORDE.INFECT_STAGE[2] *= m; } },
   { id: 'bar_s3', lo: 0.5, hi: 1.2, apply: (C, m) => { C.CAMPAIGN.STAGES[2].bar *= m; } },

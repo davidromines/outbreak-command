@@ -1,5 +1,11 @@
 # Changelog
 
+## v48 — 2026-11-16
+- Kills decide the game: each stage's population is capped (8k / 40k / 100k / 200k, was up to ~1M) so the player's arsenal can kill a real share of the horde.
+- Infection rates cut to 15% to match (INFECT_STAGE 0.0045–0.0075).
+- Soldiers, turrets, APCs, snipers and gunships fire into the horde (green glow) when no visible zombie is in range (HORDE.FIRE_EFF 0.5 of shots hit).
+- Sim tests (Manhattan stage 1): alive — do nothing 22%, novice 33%, expert 42–96%. Tuning continues with tonight's sweep.
+
 ## v47.1 — 2026-11-16
 - Sim: smarter bot players (actions valued in zombies removed, diminishing returns, idle-money pressure, skill-based threat ranking, failed actions remembered); do-nothing baseline; new knobs h_defend, infect_s3, bar_s3.
 - Game: `HORDE.DEFEND` setting (infection rate in blocks next to your units). Default 1 = no change yet.
