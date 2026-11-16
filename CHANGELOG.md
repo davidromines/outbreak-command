@@ -1,5 +1,8 @@
 # Changelog
 
+## v45 — 2026-11-15
+- Real recorded sounds: rifle (AR-15), sniper (bolt-action .30-06/.300), APC heavy MG (AK-47 pitched down), turret, gunship bursts (PPSh / M45). Explosions keep the synth body with a recorded blast layered on. Files in `sfx/`, credits in `sfx/CREDITS.md`; the synth sounds remain as fallback.
+
 ## v44 — 2026-11-15
 - Map pack export (`__game.exportPack(name)`) for the balance simulator.
 - New `sim/` folder: headless balance simulator (personas, campaign runner, overnight pool, Morris screening, report).

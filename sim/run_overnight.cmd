@@ -7,7 +7,10 @@ set NIGHT=%~dp0runs\%D%
 if not exist "%NIGHT%" mkdir "%NIGHT%"
 echo running > "%NIGHT%\keepawake.flag"
 start "" /min powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0keepawake.ps1" -Flag "%NIGHT%\keepawake.flag"
+if not exist packs mkdir packs
+move /y "%USERPROFILE%\Downloads\*.ocmap.gz" packs\ > nul 2>&1
 node build_core.js > "%NIGHT%\log.txt" 2>&1
+node checkpacks.js >> "%NIGHT%\log.txt" 2>&1
 if not exist "%NIGHT%\jobs.jsonl" %PY% make_jobs.py "%NIGHT%\jobs.jsonl" >> "%NIGHT%\log.txt" 2>&1
 node pool.js "%NIGHT%\jobs.jsonl" "%NIGHT%\results.jsonl" --until 07:00 --packs packs >> "%NIGHT%\log.txt" 2>&1
 %PY% analyze.py "%NIGHT%\results.jsonl" "%NIGHT%\jobs.jsonl" "%NIGHT%\report.html" >> "%NIGHT%\log.txt" 2>&1

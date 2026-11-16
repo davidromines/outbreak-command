@@ -2611,6 +2611,24 @@ function makeSim(CFG) {
       for (const k of ['battle', 'fire', 'rotor']) { const L = LOOPS[k]; loops[k] = normalize(fold(await render(L.len + 3, L.f), L.len), 0.8); }
       loops.horde = normalize(chorus(bank.groan, 8), 0.8);
       startLoops(); ready = true;
+      loadSamples().catch((e) => console.warn('sound samples', e));
+    }
+    // ---------- recorded samples (v45): real gun recordings replace the synth one-shots; explosions get a recorded layer ----------
+    // Files live next to the page in sfx/. If any fail to load, the synthesised versions stay in place.
+    const SAMPLES = { rifle: 6, sniper: 4, apc: 4, turret: 4, minigun: 3 }; const LAYER = { shell: 0.55, bomb: 0.7, howitzer: 0.45, naval: 0.45, collapse: 0.35 };
+    const sampleBuf = {};
+    async function fetchBuf(name) { const r = await fetch('sfx/' + name); if (!r.ok) throw new Error(name + ' ' + r.status); return ctx.decodeAudioData(await r.arrayBuffer()); }
+    function mixInto(dst, src, g, at) { const o = Math.round(at * SR); for (let c = 0; c < dst.numberOfChannels; c++) { const d = dst.getChannelData(c), sd = src.getChannelData(Math.min(c, src.numberOfChannels - 1));
+      for (let i = 0; i < sd.length && i + o < d.length; i++) d[i + o] += sd[i] * g; } }
+    async function loadSamples() {
+      const PK = { rifle: 0.85, sniper: 0.95, apc: 0.95, turret: 0.75, minigun: 0.85 };
+      for (const k in SAMPLES) { const list = []; for (let i = 1; i <= SAMPLES[k]; i++) { try { list.push(normalize(await fetchBuf(k + i + '.mp3'), PK[k])); } catch (e) {} }
+        if (list.length) { sampleBuf[k] = list; bank[k] = list; } }
+      let far = null, near = null; try { far = await fetchBuf('explfar1.mp3'); near = await fetchBuf('explnear1.mp3'); } catch (e) { return; }
+      for (const k in LAYER) { if (!bank[k]) continue; bank[k] = bank[k].map((b) => { const c = new AudioBuffer({ length: b.length, numberOfChannels: 2, sampleRate: SR });
+        for (let ch = 0; ch < 2; ch++) c.copyToChannel(b.getChannelData(Math.min(ch, b.numberOfChannels - 1)), ch);
+        mixInto(c, near, LAYER[k] * 0.9, 0); mixInto(c, far, LAYER[k], 0.01); return normalize(c, 1); }); }
+      try { sampleBuf.reload = [await fetchBuf('reload1.mp3')]; } catch (e) {}
     }
     // a "city street" impulse response: facade reflections, then a diffuse tail that darkens as it decays
     function cityIR() { const len = Math.round(2.6 * SR), b = ctx.createBuffer(2, len, SR);
