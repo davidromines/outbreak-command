@@ -1,5 +1,5 @@
 node_modules/
 tests/tiles/
 *.png
-*.mp3
+tests/**/*.mp3
 __pycache__/
