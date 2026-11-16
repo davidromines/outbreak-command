@@ -1,5 +1,9 @@
 # Changelog
 
+## v44 — 2026-11-15
+- Map pack export (`__game.exportPack(name)`) for the balance simulator.
+- New `sim/` folder: headless balance simulator (personas, campaign runner, overnight pool, Morris screening, report).
+
 ## v43 — 2026-11-15
 - Balance: at most 25 zombies per 40 m block can break into buildings at once (was 40). Bot tests, stages 1–2, alive at the end of each stage:
   - current: 85–93% / 48–54%

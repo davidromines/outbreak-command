@@ -1763,7 +1763,7 @@ function makeSim(CFG) {
       layers: [{ id: 'bg', type: 'background', paint: { 'background-color': '#0b0e11' } }, { id: 'carto', type: 'raster', source: 'carto' }] }
   ];
   let styleI = 0, styleReady = false;
-  const origin = { x: 0, y: 0, s: 1, lat: 0 };
+  const origin = { x: 0, y: 0, s: 1, lat: 0 }; const mapPack = {};
   function setOrigin(lng, lat) {
     const mc = maplibregl.MercatorCoordinate.fromLngLat([lng, lat]);
     origin.x = mc.x; origin.y = mc.y; origin.s = mc.meterInMercatorCoordinateUnits(); origin.lat = lat; origin.lng = lng;
@@ -2016,7 +2016,7 @@ function makeSim(CFG) {
         if (d) { const k = (Math.min(255, Math.floor((fx - tx) * 256)) + Math.min(255, Math.floor((fy - ty) * 256)) * 256) * 4; m = d[k] * 256 + d[k + 1] + d[k + 2] / 256 - 32768; }
         encodeElev(gx + gy * EN, m); elevM[gx + gy * EN] = m;
       }
-      elev.ready = true; elev.dirty = true; sim.setElevation(elevM, EN, ER); // the sim uses real heights for line of fire
+      elev.ready = true; elev.dirty = true; sim.setElevation(elevM, EN, ER); mapPack.elev = { g: elevM, n: EN, r: ER, sim }; // the sim uses real heights for line of fire
     } catch (e) { console.warn('elevation unavailable', e); if (token === elev.token) { dataNoteExtra = ' 3D terrain data unavailable — 3D view shows flat ground.'; showStatus(); } }
   }
   function addBuildings3d() { // extruded buildings from the same open map data
@@ -2154,7 +2154,7 @@ function makeSim(CFG) {
           if (Math.sign(A) === sign0 || !polys.length) polys.push([o]); else polys[polys.length - 1].push(o); }
         if (!polys.length) continue;
         feats.push({ type: 'Feature', id, properties: { h: +F.props.render_height || 10, b: +F.props.render_min_height || 0 }, geometry: { type: 'MultiPolygon', coordinates: polys } }); id++; } }
-    sim.setBuildings(fid, id);
+    sim.setBuildings(fid, id); mapPack.fid = fid; mapPack.nf = id; mapPack.fsim = sim;
     const data = { type: 'FeatureCollection', features: feats };
     const put = () => { try {
       occSim = null; if (map.getSource('bldg')) { map.removeFeatureState({ source: 'bldg' }); map.getSource('bldg').setData(data); }
@@ -2245,7 +2245,7 @@ function makeSim(CFG) {
     } catch (e) { console.warn('street data failed', e); }
     if (token !== loadToken) return;
     if (isCamp() && camp.run) applyCampToSim(); else loadMeta();
-    LT.last = LT.last || performance.now(); const streets = sim.setWalk(grid && grid.g, grid && grid.h); lap('sim');
+    LT.last = LT.last || performance.now(); if (grid) { mapPack.g = grid.g; mapPack.h = grid.h; mapPack.wsim = sim; } const streets = sim.setWalk(grid && grid.g, grid && grid.h); lap('sim');
     if (isCamp() && camp.run && !camp.run.strain) { camp.run.strain = Object.assign({}, sim.strain); saveCamp(); }
     if (isCamp() && camp.run) applySupplies();
     buildBuildings(); lap('buildings'); drawRegion(); lap('region');
@@ -3139,7 +3139,13 @@ function makeSim(CFG) {
   window.addEventListener('keydown', (e) => { if (!introOn && !picking && !trans && (e.ctrlKey || e.metaKey) && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); sim.selectAll(); } }, true);
   window.addEventListener('keyup', (e) => { held.delete(e.key.toLowerCase()); if (e.key === 'Shift') { shift = false; if (!mode && !drag) dl.classList.remove('on'); } });
 
-  window.__game = { get sim() { return sim; }, get camp() { return camp; }, stageEnd: (r) => stageEnd(r), choosePick: (i) => choosePick(i), get picking() { return picking; }, map, CFG, origin, elev, audio, get phase() { return phase; }, startLive, get meta() { return meta; } };
+  // --- map pack export (for the offline balance simulator): the exact grids this stage was built from ---
+  async function exportPack(name) { const P = mapPack; if (!P.g || P.wsim !== sim || P.fsim !== sim) throw new Error('stage not fully loaded yet'); const EV = P.elev && P.elev.sim === sim ? P.elev : { g: new Float32Array(0), n: 0, r: 0 };
+    const hdr = JSON.stringify({ v: 1, name, lng: origin.lng, lat: origin.lat, N: sim.N, RES: sim.RES, HALF: sim.HALF, nf: P.nf, en: EV.n, er: EV.r, stage: isCamp() && camp.run ? camp.run.stage : -1 });
+    const hb = new TextEncoder().encode(hdr), len = new Uint32Array([hb.length]);
+    const blob = new Blob([len, hb, P.g, P.h, P.fid, EV.g]); const gz = await new Response(blob.stream().pipeThrough(new CompressionStream('gzip'))).blob();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(gz); a.download = name + '.ocmap.gz'; document.body.appendChild(a); a.click(); a.remove(); return gz.size; }
+  window.__game = { exportPack, get sim() { return sim; }, get camp() { return camp; }, stageEnd: (r) => stageEnd(r), choosePick: (i) => choosePick(i), get picking() { return picking; }, map, CFG, origin, elev, audio, get phase() { return phase; }, startLive, get meta() { return meta; } };
   requestAnimationFrame(frame);
 })();
 </script>
