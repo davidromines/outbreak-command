@@ -2596,7 +2596,7 @@ function makeSim(CFG) {
     // the horde chorus needs the groan design rendered many times into one buffer: done by mixing rendered groans in JS
     function chorus(groans, len) { const n = Math.round(len * SR), L = new Float32Array(n), R = new Float32Array(n);
       for (let k = 0; k < 26; k++) { const b = groans[(rnd() * groans.length) | 0], s0 = (rnd() * n) | 0, g = 0.15 + rnd() * 0.25, rate = 0.85 + rnd() * 0.3, pl = 0.5 + (rnd() - 0.5) * 0.9;
-        const l = b.getChannelData(0), r = b.getChannelData(1), m = Math.floor(l.length / rate);
+        const l = b.getChannelData(0), r = b.getChannelData(b.numberOfChannels > 1 ? 1 : 0), m = Math.floor(l.length / rate);
         for (let i = 0; i < m; i++) { const j = (s0 + i) % n, x = (l[(i * rate) | 0] + r[(i * rate) | 0]) * 0.5 * g; L[j] += x * (1 - pl) * 2; R[j] += x * pl * 2; } }
       const b = new AudioBuffer({ length: n, numberOfChannels: 2, sampleRate: SR }); b.copyToChannel(L, 0); b.copyToChannel(R, 1); return b; }
     async function render(len, f, v) { const oc = new OfflineAudioContext(2, Math.ceil(len * SR), SR); const K = kit(oc); f(K, v); return oc.startRendering(); }
@@ -2629,6 +2629,12 @@ function makeSim(CFG) {
         for (let ch = 0; ch < 2; ch++) c.copyToChannel(b.getChannelData(Math.min(ch, b.numberOfChannels - 1)), ch);
         mixInto(c, near, LAYER[k] * 0.9, 0); mixInto(c, far, LAYER[k], 0.01); return normalize(c, 1); }); }
       try { sampleBuf.reload = [await fetchBuf('reload1.mp3')]; } catch (e) {}
+      // zombies (v46): recorded groans for single zombies and the horde chorus; bites when someone is turned; deaths as kills mount
+      const zl = async (pre, n, pk) => { const out = []; for (let i = 1; i <= n; i++) { try { out.push(normalize(await fetchBuf(pre + i + '.mp3'), pk)); } catch (e) {} } return out; };
+      const zg = await zl('zgroan', 9, 0.8); if (zg.length) { bank.groan = zg; loops.horde = normalize(chorus(zg, 10), 0.8);
+        try { loopSrc.horde.stop(); } catch (e) {} const s2 = ctx.createBufferSource(); s2.buffer = loops.horde; s2.loop = true; s2.connect(horde); s2.start(); loopSrc.horde = s2; }
+      const zb = await zl('zbite', 3, 0.85); if (zb.length) bank.zbite = zb;
+      const zd = await zl('zdeath', 1, 0.7); if (zd.length) bank.zdeath = zd;
     }
     // a "city street" impulse response: facade reflections, then a diffuse tail that darkens as it decays
     function cityIR() { const len = Math.round(2.6 * SR), b = ctx.createBuffer(2, len, SR);
@@ -2668,7 +2674,7 @@ function makeSim(CFG) {
       if (!running) ctx.suspend();
     }
     // ---------- placing a sound in the world ----------
-    const VOICES = { rifle: 10, sniper: 4, apc: 5, turret: 6, mortar: 4, shell: 6, bomb: 6, nuke: 2, minigun: 3, brrrt: 2, howitzer: 4, naval: 4, missile: 3, napalm: 3, collapse: 4, splash: 3, groan: 6, scream: 4 };
+    const VOICES = { zbite: 3, zdeath: 3, rifle: 10, sniper: 4, apc: 5, turret: 6, mortar: 4, shell: 6, bomb: 6, nuke: 2, minigun: 3, brrrt: 2, howitzer: 4, naval: 4, missile: 3, napalm: 3, collapse: 4, splash: 3, groan: 6, scream: 4 };
     function voice(cat, dur) { const now = ctx.currentTime, a = busy[cat] || (busy[cat] = []), max = VOICES[cat] || SC.VOICES[cat] || 4;
       for (let i = a.length - 1; i >= 0; i--) if (a[i] < now) a.splice(i, 1); if (a.length >= max) return false; a.push(now + dur); return true; }
     let lis = { x: 0, y: 0, alt: 300, W: 1, H: 1, cx: 0 };
@@ -2729,16 +2735,20 @@ function makeSim(CFG) {
       const s = ctx.createBufferSource(); s.buffer = nb('white'); s.loop = true; const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 0.6; f.frequency.setValueAtTime(1800, t); f.frequency.linearRampToValueAtTime(600, t + dur); s.connect(f); f.connect(e); s.start(t); s.stop(t + dur + 0.1);
       const r = ctx.createBufferSource(); r.buffer = nb('brown'); r.loop = true; const rf = ctx.createBiquadFilter(); rf.type = 'lowpass'; rf.frequency.value = 180; const rg = ctx.createGain(); rg.gain.value = 1.3; r.connect(rf); rf.connect(rg); rg.connect(e); r.start(t); r.stop(t + dur + 0.1); }
     // ---------- every frame: read the simulation's events, place them, and set the mix ----------
+    let lastKills = 0;
+    window.__snd = { bank: () => Object.fromEntries(Object.entries(bank).map(([k, v]) => [k, v.length + ':' + (v[0] ? v[0].duration.toFixed(2) : 0)])), samples: () => Object.keys(sampleBuf), state: () => ctx && ctx.state };
     function update(el, live) {
       const ev = sim.ev, n = sim.evN; sim.evN = 0;
       if (!ctx || ctx.state !== 'running' || el <= 0) return;
       listener(); const now = ctx.currentTime, close = clamp(1 - (lis.alt - 60) / 900, 0, 1); // 1 = street level, 0 = high above the city
       let heat = 0, played = 0;
+      if (bank.zdeath && sim.kills > lastKills) { if (live && rnd() < Math.min(0.4, (sim.kills - lastKills) * 0.03)) { const d = 200 + rnd() * 700; emitAt('zdeath', rnd() * 1.4 - 0.7, d, d, 0.7); } } lastKills = sim.kills;
       for (let k = 0; k < n; k++) {
         const t = ev[k * 3], x = ev[k * 3 + 1], y = ev[k * 3 + 2]; heat += t <= 4 || t === 9 ? 1 : t <= 7 ? 6 : 0;
         if (!ready || played >= SC.MAX_PER_FRAME) continue;
         if (t === 12) { if (voice('alarm', 1.3)) alarm(panned(0, 0.35), now + 0.02); continue; }
-        if (t === 13 || t === 14) { if (voice('plane', 4)) flyover(detail, now + 0.05, t === 14 ? 0.7 : 0.5, t === 13); continue; }
+        if (t === 13 || t === 14) { if (voice('plane', 4)) flyover(detail, now + 0.05, t === 14 ? 1.5 : 1.2, t === 13); continue; }
+        if (t === 10 && bank.zbite && rnd() < 0.6) { const wb = where(x, y); if (wb.on && wb.d < 900) emitAt('zbite', wb.pan, wb.d, wb.dh, 1.0); }
         const e = EV[t]; if (!e) continue; const w = where(x, y);
         if (!e[2] && (!w.on || w.d > 900)) continue;                                   // small arms: only what you can see, within ~1 km
         if (emitAt(e[0], w.pan, w.d, w.dh, e[1])) { played++; if (t === 15) brrrtFly(now); if (t === 8) duckUntil = now + 6; else if (e[2] && w.d < 400) duckUntil = Math.max(duckUntil, now + 0.6); }

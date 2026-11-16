@@ -12,3 +12,5 @@ Cut, trimmed and normalised for the game (`sfx/*.mp3`, made with ffmpeg from the
 | explfar1, explnear1, reload1 | BigSoundBank.com — Explosion far away (ID 1023), Explosion 2 (ID 1808), Gun loading 2 (ID 1989) |
 
 Licences: BigSoundBank sounds are royalty-free (bigsoundbank.com licence). Confirm the licence terms of the Prepared SFX Library and the Impacts pack from where they were downloaded before any commercial release.
+
+| zgroan1–9, zbite1–3, zdeath1 | Zombie voice packs supplied by David ("zombey" 01–07; zombie idle, sniffing, brains, attack, lunge, eating, defeated) — licence to confirm |

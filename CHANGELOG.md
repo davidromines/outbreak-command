@@ -1,5 +1,10 @@
 # Changelog
 
+## v46 — 2026-11-15
+- Recorded zombie voices: single groans and the horde chorus are built from 9 recordings; a bite/lunge plays when someone is turned; death groans as kills mount.
+- Aircraft flyovers louder (still synth until recordings arrive).
+- `window.__snd` debug helper shows which sounds are loaded.
+
 ## v45 — 2026-11-15
 - Real recorded sounds: rifle (AR-15), sniper (bolt-action .30-06/.300), APC heavy MG (AK-47 pitched down), turret, gunship bursts (PPSh / M45). Explosions keep the synth body with a recorded blast layered on. Files in `sfx/`, credits in `sfx/CREDITS.md`; the synth sounds remain as fallback.
 
