@@ -1,5 +1,9 @@
 # Changelog
 
+## v47.1 — 2026-11-16
+- Sim: smarter bot players (actions valued in zombies removed, diminishing returns, idle-money pressure, skill-based threat ranking, failed actions remembered); do-nothing baseline; new knobs h_defend, infect_s3, bar_s3.
+- Game: `HORDE.DEFEND` setting (infection rate in blocks next to your units). Default 1 = no change yet.
+
 ## v47 — 2026-11-15
 - Recorded artillery and air: mortar launches, howitzer and naval guns, big explosions layered into shells and bombs, incoming-shell whistles (last 1.7 s of flight), falling-bomb scream before bomb runs, jet flyovers (strikes/bombers/F-35), propeller flyover for supply drops (pitched down for the AC-130), recorded helicopter rotor loop for the gunship.
 - Military radio chatter every 40–90 s during play.

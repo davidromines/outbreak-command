@@ -36,7 +36,7 @@ function runCampaign(job, packDir) {
     S.up = Object.assign({}, run.up); if (S.applyUpgrades) S.applyUpgrades();
     S.free.bomb += run.supplies.bomb || 0; S.free.heli += run.supplies.heli || 0; run.supplies = {};
     run.strain = S.strain; S.seed = run.seed; S.seedBg = run.seedBg;
-    const persona = new Persona(S, C, { skill: job.skill, style: job.style, allowed: allowedTools(C, k, job.blueprints), rng });
+    const persona = new Persona(S, C, { skill: job.skill, style: job.style, allowed: job.idle ? new Set() : allowedTools(C, k, job.blueprints), rng });
     // planning: a few blind preparations, then the outbreak starts
     const budget0 = S.budget; for (let i = 0; i < 3; i++) S.step(dt);
     persona.observe(); for (let i = 0; i < 8; i++) { persona.nextDecide = 0; persona.tick(true); }
@@ -47,7 +47,7 @@ function runCampaign(job, packDir) {
       if (S.allZ === 0) { reason = 'contained'; break; } if (S.allH < 1) { reason = 'wipe'; break; } if (alive < st.bar) { reason = 'bar'; break; } }
     const alive = S.allH / Math.max(1, S.allH0), stars = CP.TIERS.filter((t) => alive >= t).length, contained = reason === 'contained';
     const ps = persona.summary();
-    out.stages.push({ stage: k + 1, map: mapSrc, alive: +alive.toFixed(4), reason, stars, contained, t: Math.round(S.time), bar: st.bar, minMargin: +minMargin.toFixed(4), kills: S.kills, budget0, unspent: Math.round(S.budget), spent: Math.round(S.spent), pop: Math.round(S.allH0), zEnd: Math.round(S.allZ), actions: ps.actions, spend: ps.spend, msStep: +((Date.now() - t0) / Math.max(1, steps)).toFixed(2), sec: Math.round((Date.now() - t0) / 1000) });
+    out.stages.push({ stage: k + 1, map: mapSrc, alive: +alive.toFixed(4), reason, stars, contained, t: Math.round(S.time), bar: st.bar, minMargin: +minMargin.toFixed(4), kills: S.kills, budget0, unspent: Math.round(S.budget), spent: Math.round(S.spent), pop: Math.round(S.allH0), zEnd: Math.round(S.allZ), actions: ps.actions, spend: ps.spend, fails: ps.fails, msStep: +((Date.now() - t0) / Math.max(1, steps)).toFixed(2), sec: Math.round((Date.now() - t0) / 1000) });
     if (reason === 'bar' || reason === 'wipe') { out.result = 'fell'; out.lastStage = k + 1; return out; }
     if (k === ST.length - 1) { out.result = contained ? 'won' : 'lost_final'; out.lastStage = k + 1; return out; }
     if (k + 1 >= maxStage) { out.result = 'stopped'; out.lastStage = k + 1; return out; }

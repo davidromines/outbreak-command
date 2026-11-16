@@ -40,6 +40,9 @@ const KNOBS = [
   { id: 'income', lo: 0.5, hi: 2.0, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { s.income *= m; }) },
   { id: 'stage_time', lo: 0.7, hi: 1.4, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { s.time = Math.round(s.time * m); }) },
   { id: 'fall_line', lo: 0.5, hi: 1.6, apply: (C, m) => C.CAMPAIGN.STAGES.forEach((s) => { s.bar = Math.min(0.5, s.bar * m); }) },
+  { id: 'h_defend', lo: 0.2, hi: 1.0, apply: (C, m) => { C.HORDE.DEFEND = (C.HORDE.DEFEND || 1) * m; } },
+  { id: 'infect_s3', lo: 0.6, hi: 1.2, apply: (C, m) => { C.HORDE.INFECT_STAGE[2] *= m; } },
+  { id: 'bar_s3', lo: 0.5, hi: 1.2, apply: (C, m) => { C.CAMPAIGN.STAGES[2].bar *= m; } },
   { id: 'sp_reward', lo: 0.5, hi: 2.0, apply: (C, m) => { for (const k of ['SP_ALIVE', 'SP_STAR', 'SP_CONTAIN', 'SP_KILLS_MAX', 'SP_STAGE']) C.SHOP[k] *= m; } },
 ];
 // unit cube [0,1] -> log-scale multiplier between lo and hi (0.5 maps to the geometric middle; 1.0 lies inside every range)
