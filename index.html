@@ -229,7 +229,9 @@ const CFG = {
     VOLUME: 0.7,
     DETAIL: 3,             // loudness of close-up sounds (shots, blasts, groans) against the background layers
     CITY: 0.6,             // loudness of normal city life (traffic, horns, crowds, planes); it fades as civilians are lost
-    MAX_PER_FRAME: 24,     // most individual sounds started in one frame
+    MAX_PER_FRAME: 24,
+    HORDE_MIX: 0.45,       // v49: the horde moan sits in the background
+    MIX: { rifle: 1.6, sniper: 1.4, apc: 1.5, turret: 1.5, minigun: 1.4, mortar: 1.3, howitzer: 1.3, naval: 1.3, groan: 0.4, zbite: 0.55, zdeath: 0.45, scream: 0.8 }, // v49: per-sound loudness — guns forward, zombies back     // most individual sounds started in one frame
     VOICES: { a10: 2, arty: 4, missile: 3, rifle: 8, sniper: 3, apc: 4, turret: 4, mortar: 3, blast: 5, nuke: 1, heli: 6, scream: 3, fall: 2, alarm: 1, plane: 2, groan: 4 } // most playing at once, per kind
   },
 
@@ -240,7 +242,7 @@ const CFG = {
   CAMPAIGN: {
     STAGES: [
       // v29: much faster growth — about 0.9, 8, 40 and 125 km² (each stage 3-9x the last)
-      { name: 'Ground zero',   area: 1600,  res: 3, R: 650,  humans: 6000,  time: 300, budget: 1200, income: 5,  sites: [1, 1], zps: [40, 90],   seedCap: 0,    bar: 0.05, people: 8000 },
+      { name: 'Ground zero',   area: 1600,  res: 3, R: 650,  humans: 6000,  time: 300, budget: 800,  income: 5,  sites: [1, 1], zps: [40, 90],   seedCap: 0,    bar: 0.05, people: 8000 },
       { name: 'The district',  area: 3600,  res: 3, R: 2000, humans: 20000, time: 480, budget: 2000, income: 10, sites: [1, 2], zps: [40, 90],   seedCap: 250,  bar: 0.10, people: 40000 },
       { name: 'The city',      area: 8000,  res: 5, R: 4500, humans: 40000, time: 660, budget: 3500, income: 18, sites: [2, 3], zps: [60, 150],  seedCap: 500,  bar: 0.15, people: 100000 },
       { name: 'The metro',     area: 14000, res: 8, R: 8000, humans: 60000, time: 900, budget: 6000, income: 30, sites: [3, 4], zps: [80, 200],  seedCap: 900,  bar: 0.20, people: 200000 }
@@ -361,7 +363,7 @@ const CFG = {
   GARRISON_OVERRUN_CONVERT: 0.5, // share of a fallen garrison that turns; the rest die fighting
   GARRISON_M2_PER_TROOPER: 2000, // floor area needed per trooper (footprint x floors)
   FLOOR_HEIGHT: 3.5,     // metres per storey
-  GARRISON_MIN: 2, GARRISON_MAX: 16,
+  GARRISON_MIN: 2, GARRISON_MAX: 60, GARRISON_SCALE: 4, // v49: troopers = 4 x sqrt(floor area / 1000 m²) — a shed holds 2-3, a mid-rise ~35, a tower 60
   M2_PER_PERSON: 40,     // campaign: civilians per square metre of floor space in the region (fewer in low-rise towns)
   HUMANS: 40000,         // maximum civilians (the real number is random per match)
   HUMAN_FLEE_SPEED: 3.2, // m/s (each human gets 0.6x–1.25x of this)
@@ -412,7 +414,7 @@ const CFG = {
   // ---- MORE AIR SUPPORT (live phase only) ----
   BOMB_SCATTER: 70,      // carpet bombing: bombs land this wide across the line (metres)
   PRECISION_COST: 200,   // one large guided bomb
-  PRECISION_BLAST: 35, PRECISION_DAMAGE: 900, PRECISION_DELAY: 5,
+  PRECISION_BLAST: 61, PRECISION_DAMAGE: 900, PRECISION_DELAY: 5, // v49 (David): area of effect +200% (3x area: radius 35 -> 61 m); buildings still only take damage within 35 m
   STRAFE_COST: 450,      // A-10 strafing run along a drawn line
   STRAFE_LEN: 320, STRAFE_DELAY: 3, STRAFE_TIME: 1.6, STRAFE_WIDTH: 15, STRAFE_KILL: 0.85, STRAFE_CIV: 0.5,
   FIRE_COST: 400,        // firebombing run: napalm along a line; sets buildings on fire
@@ -426,7 +428,7 @@ const CFG = {
   FIRE_HEAT: 0.25,       // chance per second that anyone standing right beside a burning building dies
   // ---- ARTILLERY + NAVY ----
   HOWITZER_COST: 900, HOWITZER_GUNS: 3, HOWITZER_MIN_RANGE: 150, HOWITZER_FLIGHT: 6, HOWITZER_BLAST: 56, // v40 (David): a 3-gun battery that fires salvos; blast radius doubled (was 28 m, $600 for one gun)
-  HOWITZER_SCATTER: 16, HOWITZER_SPEED: 1,
+  HOWITZER_SCATTER: 22, HOWITZER_STAGGER: 1.0, HOWITZER_SPEED: 1, // v49: guns of a battery fire 1 s apart, each round scattered up to 22 m
   SHIP_COST: 900,        // destroyer: must be placed on water; gun fires on its own, missiles are fired by you
   SHIP_MISSILES: 4, SHIP_GUN_BLAST: 26, SHIP_GUN_FLIGHT: 5, SHIP_GUN_SCATTER: 14,
   MISSILE_SPEED: 260, MISSILE_BLAST: 100, /* v42: 40 -> 100 m radius (~6x the area) */ MISSILE_DAMAGE: 1200,
@@ -514,7 +516,7 @@ function makeSim(CFG) {
   const Wd = {}; // weapons after upgrades
   const EVMAX = 3000, ev = new Float32Array(EVMAX * 3); // sound events: type, x, y (read and cleared by the sound engine)
   const S = { ev, evN: 0, evDropped: 0, n: 0, nh: 0, nz: 0, nt: 0, kills: 0, drops: 0, time: 0, tick: 0, trHead: 0, streets: false, planning: false, fresh: true, outbreaks: [], budget: 0, lost: 0, spent: 0, nsel: 0, sel, nw: 0, wallList, wallsDirty: false, zones: [], stations: [], evac: 0, safeDirty: false, na: 0, lostApc: 0, garrisons: [], gar, lock, cls, breaches: 0, bheight, fstate, fires: () => fireList, wireList, msl, strafes: [], missiles: [], gfires: [], nFire: 0, nsh: 0, nhw: 0, lostShip: 0, zk, sub, rounds, strain: { speed: 1, health: 1, reach: 1 }, humans0: CFG.HUMANS, zombies0: 0, started: false, hasWater: false, ndry: 0, ngar: 0, lastGarrison: null, up: {}, freeCrates: 0, cratesOpened: 0, free: { bomb: 0, heli: 0, nuke: 0 }, intel: false, planSites: [], W: Wd,
-    wallHp: 1, garHp: CFG.GARRISON_HP, dropCost: CFG.DROP_COST, income: CFG.INCOME, dropSize: CFG.DROP_SIZE, nsn: 0, ntu: 0, lostTurret: 0, nm: 0, lostMortar: 0, collateral: 0, shells: [], blasts: [], planes: [], helis: [], nukes: [], fallout: [], flash: 0, nukesUsed: 0,
+    wallHp: 1, garHp: CFG.GARRISON_HP, dropCost: CFG.DROP_COST, income: CFG.INCOME, dropSize: CFG.DROP_SIZE, nsn: 0, ntu: 0, lostTurret: 0, nm: 0, lostMortar: 0, collateral: 0, shells: [], salvoQ: [], blasts: [], planes: [], helis: [], nukes: [], fallout: [], flash: 0, nukesUsed: 0,
     px, py, type, aim, timer, hp, spd, ammo, tracers, trTtl, trT0, TR_MAX, HALF, N, RES, walk, AREA: CFG.AREA, regionR: 0, region: null, popScale: 1, seed: null, fixedStrain: null, siteCount: null, NONE, HUMAN, ZOMBIE, TROOPER, FALLING };
   const free = [];
   const rnd = Math.random;
@@ -952,7 +954,7 @@ function makeSim(CFG) {
     type.fill(0); sel.fill(0); mode.fill(0); S.n = 0; free.length = 0; trTtl.fill(0); pdist.fill(INF); zdist.fill(INF); rdist.fill(INF);
     S.kills = 0; S.drops = 0; S.time = 0; S.tick = 0; S.fresh = true; S.outbreaks = []; S.lost = 0; S.spent = 0;
     applyUp(); S.budget = CFG.START_BUDGET + (S.up.chest || 0) * CFG.UPGRADES.chest.per; S.cratesOpened = 0; S.free = { bomb: 0, heli: 0, nuke: 0 }; S.intel = false; // S.up and S.freeCrates are set by the game before reset
-    S.lostApc = 0; S.lostTurret = 0; S.ntu = 0; S.na = 0; S.nm = 0; S.lostMortar = 0; S.collateral = 0; S.shells = []; S.blasts = []; S.planes = []; S.helis = []; S.inbound = []; S.pendingDrops = [];
+    S.lostApc = 0; S.lostTurret = 0; S.ntu = 0; S.na = 0; S.nm = 0; S.lostMortar = 0; S.collateral = 0; S.shells = []; S.salvoQ = []; S.blasts = []; S.planes = []; S.helis = []; S.inbound = []; S.pendingDrops = [];
     S.nukes = []; S.fallout = []; S.flash = 0; S.nukesUsed = 0; S.garrisons = []; gar.fill(0); lock.fill(0); cls.fill(0); ogar.fill(0); bmask.fill(0); edist.fill(INF); S.breaches = 0; rounds.fill(0); rst.fill(0); sub.fill(0);
     S.started = false; S.zombies0 = 0; hordeT = 0; S.bgKills = 0; S.ndry = 0; S.ngar = 0; S.lastGarrison = null;
     // ---- hidden conditions for this match: nobody sees these until the end screen ----
@@ -1035,7 +1037,7 @@ function makeSim(CFG) {
     const rec = { id: b, entry, ex: -HALF + (entry % N + 0.5) * RES, ey: -HALF + (((entry / N) | 0) + 0.5) * RES, cells, count: 0, breach: 0, h: hmax,
       area: Math.round(barea[b] * RES * RES), floors: Math.max(1, Math.round((bhsum[b] / barea[b] || CFG.FLOOR_HEIGHT) / CFG.FLOOR_HEIGHT)), cap: 0,
       bonus: Math.min(CFG.GARRISON_MAX_BONUS, CFG.GARRISON_MIN_BONUS + hmax * CFG.GARRISON_RANGE_PER_M) };
-    rec.cap = Math.max(CFG.GARRISON_MIN, Math.min(CFG.GARRISON_MAX, Math.round(rec.area * rec.floors / CFG.GARRISON_M2_PER_TROOPER))); // footprint x storeys
+    rec.cap = garCap(rec.area, rec.floors); // footprint x storeys, square-root scaled (v49)
     if (gi >= 0) S.garrisons[gi] = rec; else gi = S.garrisons.push(rec) - 1;
     return gi;
   }
@@ -1044,11 +1046,12 @@ function makeSim(CFG) {
   function leave(i) { if (lock[i]) return; const g = S.garrisons[gar[i] - 1]; gar[i] = 0; if (g) { g.count--; cellXY(i, g.entry, 0.8); } }
   // ---- buying a garrison: troops appear inside the building, cost depends on its size, and they never leave ----
   function buildingAt(x, y) { if (!(Math.abs(x) < HALF && Math.abs(y) < HALF)) return -1; const c = nav(x, y); return (walk[c] & 2) && blabel[c] ? c : -1; }
+  function garCap(area, floors) { return Math.max(CFG.GARRISON_MIN, Math.min(CFG.GARRISON_MAX, Math.round(CFG.GARRISON_SCALE * Math.sqrt(area * floors / 1000)))); }
   S.garrisonQuote = function (x, y) {
     const c0 = buildingAt(x, y); if (c0 < 0 || fstate[c0]) return null; const b = blabel[c0];
     const g = S.garrisons.find((r) => r.id === b && r.count > 0);
     const area = barea[b] * RES * RES, floors = Math.max(1, Math.round((bhsum[b] / barea[b] || CFG.FLOOR_HEIGHT) / CFG.FLOOR_HEIGHT));
-    const cap = g ? g.cap : Math.max(CFG.GARRISON_MIN, Math.min(CFG.GARRISON_MAX, Math.round(area * floors / CFG.GARRISON_M2_PER_TROOPER)));
+    const cap = g ? g.cap : garCap(area, floors);
     const need = cap - (g ? g.count : 0);
     return { cap, need, inside: g ? g.count : 0, cost: need * CFG.GARRISON_COST_PER_TROOP, floors, area: Math.round(area) };
   };
@@ -1157,7 +1160,7 @@ function makeSim(CFG) {
   };
   S.precisionBomb = function (x, y) {
     if (S.planning || !(Math.abs(x) < HALF && Math.abs(y) < HALF) || !spend(CFG.PRECISION_COST)) return false;
-    S.shells.push({ x: x + (rnd() - 0.5) * 4, y: y + (rnd() - 0.5) * 4, t: CFG.PRECISION_DELAY, r: CFG.PRECISION_BLAST, dz: CFG.PRECISION_DAMAGE, dmg: 600, walls: true, snd: 7 }); S.inbound.push({ k: 'precision', x, y, t: CFG.PRECISION_DELAY }); { const a = rnd() * 6.283; S.planes.push({ x, y, dx: Math.cos(a), dy: Math.sin(a), v: 260, age: 0, delay: CFG.PRECISION_DELAY - 1.2, kind: 'f35' }); } // the jet passes over just before the bomb lands
+    S.shells.push({ x: x + (rnd() - 0.5) * 4, y: y + (rnd() - 0.5) * 4, t: CFG.PRECISION_DELAY, r: CFG.PRECISION_BLAST, bldR: 35, dz: CFG.PRECISION_DAMAGE, dmg: 600, walls: true, snd: 7 }); S.inbound.push({ k: 'precision', x, y, t: CFG.PRECISION_DELAY }); { const a = rnd() * 6.283; S.planes.push({ x, y, dx: Math.cos(a), dy: Math.sin(a), v: 260, age: 0, delay: CFG.PRECISION_DELAY - 1.2, kind: 'f35' }); } // the jet passes over just before the bomb lands
     emit(14, x, y); return true;
   };
   S.strafe = function (x0, y0, x1, y1) { // A-10: a line of 30 mm fire, narrow and deadly, civilians included
@@ -1548,11 +1551,9 @@ function makeSim(CFG) {
             const sc = z - 0.02 * bH[k]; if (sc > bs) { bs = sc; tx = wx; ty = wy; found = true; } } }
         if (!found) { timer[i] = 0.5; continue; }
         aim[i] = Math.atan2(ty - y, tx - x);
-        if (how && btry[i] === i + 1) { // battery salvo: every gun of the team that still has shells fires at the same target
-          for (let j = 0; j < S.n; j++) { if (btry[j] !== i + 1 || type[j] !== MORTAR || rounds[j] <= 0) continue;
-            const a = rnd() * 6.283, d = Math.sqrt(rnd()) * CFG.HOWITZER_SCATTER;
-            { const T = CFG.HOWITZER_FLIGHT + rnd() * 0.4; S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: T, T, sx: px[j], sy: py[j], dz: wp.damage, r: CFG.HOWITZER_BLAST, bldR: 28, snd: 7, dmg: 250 }); /* v42: buildings take damage only within the old 28 m — the doubled blast is for zombies */ } emit(16, px[j], py[j]);
-            rounds[j]--; timer[j] = wp.interval; aim[j] = Math.atan2(ty - py[j], tx - px[j]); }
+        if (how && btry[i] === i + 1) { // battery salvo (v49): the guns fire one after another, HOWITZER_STAGGER s apart, each with its own scatter
+          let n = 0; for (let j = 0; j < S.n; j++) { if (btry[j] !== i + 1 || type[j] !== MORTAR || rounds[j] <= 0) continue;
+            S.salvoQ.push({ j, t: n * CFG.HOWITZER_STAGGER, tx, ty, dz: wp.damage }); rounds[j]--; timer[j] = wp.interval + n * CFG.HOWITZER_STAGGER; aim[j] = Math.atan2(ty - py[j], tx - px[j]); n++; }
           continue; }
         const a = rnd() * 6.283, d = Math.sqrt(rnd()) * (ship ? CFG.SHIP_GUN_SCATTER : how ? CFG.HOWITZER_SCATTER : CFG.MORTAR_SCATTER);
         const fT = ship ? Math.max(CFG.SHIP_GUN_FLIGHT, Math.hypot(tx - x, ty - y) / 600) : how ? CFG.HOWITZER_FLIGHT : CFG.MORTAR_FLIGHT;
@@ -1684,6 +1685,9 @@ function makeSim(CFG) {
       if (S.tick % 10 !== q % 10) continue; const r2 = fo.r * fo.r; // anything in the open inside the fallout dies; garrisons are sheltered
       for (let i = 0; i < n; i++) { if (type[i] === NONE || gar[i] || sub[i]) continue; const dx = px[i] - fo.x, dy = py[i] - fo.y; if (dx * dx + dy * dy < r2) killAgent(i); } }
     // ---- mortar shells land: everything in the open inside the blast dies, zombie or not ----
+    for (let q = S.salvoQ.length - 1; q >= 0; q--) { const f = S.salvoQ[q]; f.t -= dt; if (f.t > 0) continue; S.salvoQ.splice(q, 1); const j = f.j;
+      if (type[j] !== MORTAR) continue; const a = rnd() * 6.283, d = Math.sqrt(rnd()) * CFG.HOWITZER_SCATTER, T = CFG.HOWITZER_FLIGHT + rnd() * 0.4;
+      S.shells.push({ x: f.tx + Math.cos(a) * d, y: f.ty + Math.sin(a) * d, t: T, T, sx: px[j], sy: py[j], dz: f.dz, r: CFG.HOWITZER_BLAST, bldR: 28, snd: 7, dmg: 250 }); emit(16, px[j], py[j]); }
     for (let q = S.shells.length - 1; q >= 0; q--) { const sh = S.shells[q]; sh.t -= dt; if (sh.t > 0) continue;
       const rad = sh.r || CFG.MORTAR_BLAST;
       if (sh.water) { S.shells.splice(q, 1); douse(sh.x, sh.y, rad); if (q % 4 === 0) emit(22, sh.x, sh.y); S.splash.push({ x: sh.x, y: sh.y, r: rad, t: 2.5 }); continue; }
@@ -2712,12 +2716,14 @@ function makeSim(CFG) {
     function where(x, y) { const p = map.project(toLngLat(x, y)), dh = Math.hypot(x - lis.x, y - lis.y), d = Math.hypot(dh, lis.alt), on = p.x > -60 && p.y > -60 && p.x < lis.W + 60 && p.y < lis.H + 60;
       return { pan: clamp((p.x - lis.W / 2) / (lis.W / 2) * 0.85, -0.95, 0.95), d, dh, on }; }
     // play a bank sound at distance d (metres) with stereo position pan; the speed of sound delays far ones
+    const ZOMBIE_KINDS = { groan: 1, zbite: 1, zdeath: 1 };
     function emitAt(kind, pan, d, dh, g, extra) { const b = bank[kind]; if (!b || !b.length) return false; if (!voice(kind, b[0].duration)) return false;
       const now = ctx.currentTime, delay = Math.min(1.8, Math.max(0, dh - 120) / 343), t = now + delay + rnd() * 0.012;
       const src = ctx.createBufferSource(); src.buffer = b[(rnd() * b.length) | 0]; src.playbackRate.value = (0.93 + rnd() * 0.14) * ((extra && extra.rate) || 1);
       const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = clamp(19000 * Math.exp(-d / 700), 380, 19000); lp.Q.value = 0.5; // air absorption
-      const gn = ctx.createGain(); gn.gain.value = g / (1 + d / 140); const p = ctx.createStereoPanner(); p.pan.value = pan;
-      const wet = ctx.createGain(); wet.gain.value = clamp(0.15 + d / 1800, 0.15, 0.8) * g / (1 + d / 400);
+      const zk = ZOMBIE_KINDS[kind], mx = (CFG.SOUND.MIX && CFG.SOUND.MIX[kind]) || 1; if (zk) lp.frequency.value = Math.min(lp.frequency.value, 2600); // zombies sit behind: darker
+      const gn = ctx.createGain(); gn.gain.value = g * mx / (1 + d / 140); const p = ctx.createStereoPanner(); p.pan.value = pan;
+      const wet = ctx.createGain(); wet.gain.value = clamp(0.15 + d / 1800, 0.15, 0.8) * g * mx * (zk ? 1.8 : 1) / (1 + d / 400);
       src.connect(lp); lp.connect(gn); gn.connect(p); p.connect(detail); lp.connect(wet); wet.connect(revIn);
       src.start(t); stats[kind] = (stats[kind] || 0) + 1; return true; }
     // sim event code -> [sound, base gain, heard from anywhere?]
@@ -2799,7 +2805,7 @@ function makeSim(CFG) {
       const war = live ? clamp(Math.log10(1 + intensity) / 2.4, 0, 1) : 0, duck = now < duckUntil ? 0.35 : 1;
       battle.gain.setTargetAtTime(war * (0.25 + 0.75 * (1 - close)) * 0.7 * duck, now, 0.5);
       bed.gain.setTargetAtTime((live ? 0.3 : 0.5) * duck, now, 1);
-      const zAll = (sim.allZ || sim.nz); horde.gain.setTargetAtTime(clamp(Math.log10(1 + zAll) / 5, 0, 1) * (0.25 + 0.5 * close) * 0.5 * duck, now, 0.8);
+      const zAll = (sim.allZ || sim.nz); horde.gain.setTargetAtTime(clamp(Math.log10(1 + zAll) / 5, 0, 1) * (0.25 + 0.5 * close) * 0.5 * CFG.SOUND.HORDE_MIX * duck, now, 0.8);
       const helis = sim.helis.some((h) => h.delay <= 0); rotor.gain.setTargetAtTime(helis ? 0.45 * (0.4 + 0.6 * close) * duck : 0, now, 0.4);
       fireBus.gain.setTargetAtTime(clamp(Math.log10(1 + sim.nFire) / 3.6, 0, 1) * (0.3 + 0.7 * close) * 0.5 * duck, now, 0.6);
       detail.gain.setTargetAtTime(SC.DETAIL * 0.6 * (now < duckUntil && duckUntil - now > 1 ? 0.6 : 1), now, 0.15);

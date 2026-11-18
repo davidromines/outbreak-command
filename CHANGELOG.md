@@ -1,5 +1,12 @@
 # Changelog
 
+## v49 — 2026-11-17
+- Garrisons scale with the building: troopers = 4 × √(floor area / 1000 m²), 2–60 (was capped at 16, so most Manhattan buildings were identical); cost $24–$720.
+- Howitzer batteries fire one gun per second, each round scattered up to 22 m.
+- Precision strike: area of effect +200% (radius 35 → 61 m); building damage still 35 m.
+- Sound mix: guns forward (×1.3–1.6), zombie voices and horde moan pushed back (quieter, darker, more reverb).
+- Stage 1 starting money 1200 → 800.
+
 ## v48 — 2026-11-16
 - Kills decide the game: each stage's population is capped (8k / 40k / 100k / 200k, was up to ~1M) so the player's arsenal can kill a real share of the horde.
 - Infection rates cut to 15% to match (INFECT_STAGE 0.0045–0.0075).
