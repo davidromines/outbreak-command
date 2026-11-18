@@ -448,7 +448,7 @@ const CFG = {
   MORTAR_COST: 250,      // mortar squad: indirect fire, no line of sight needed
   MORTAR_MIN_RANGE: 40,
   MORTAR_FLIGHT: 2.5,    // seconds a shell is in the air
-  MORTAR_BLAST: 14,      // metres; kills everything in the open inside it, friend or foe
+  MORTAR_BLAST: 20,      // metres; kills everything in the open inside it, friend or foe. v49 (David): area +100% (radius 14 -> 20 m); buildings still only damaged within 14 m
   MORTAR_SCATTER: 8,     // metres of inaccuracy
   MORTAR_MIN_ZOMBIES: 6, // won't fire at smaller groups
   MORTAR_CIV_WEIGHT: 3,  // each friendly near the target cancels this many zombies when picking a target
@@ -1558,7 +1558,7 @@ function makeSim(CFG) {
         const a = rnd() * 6.283, d = Math.sqrt(rnd()) * (ship ? CFG.SHIP_GUN_SCATTER : how ? CFG.HOWITZER_SCATTER : CFG.MORTAR_SCATTER);
         const fT = ship ? Math.max(CFG.SHIP_GUN_FLIGHT, Math.hypot(tx - x, ty - y) / 600) : how ? CFG.HOWITZER_FLIGHT : CFG.MORTAR_FLIGHT;
         S.shells.push({ x: tx + Math.cos(a) * d, y: ty + Math.sin(a) * d, t: fT, T: fT, sx: x, sy: y, dz: wp.damage,
-          r: ship ? CFG.SHIP_GUN_BLAST : how ? CFG.HOWITZER_BLAST : 0, snd: how || ship ? 7 : 0, dmg: how || ship ? 250 : 0 }); emit(ship ? 18 : how ? 16 : 5, x, y);
+          r: ship ? CFG.SHIP_GUN_BLAST : how ? CFG.HOWITZER_BLAST : 0, bldR: ship || how ? undefined : 14, snd: how || ship ? 7 : 0, dmg: how || ship ? 250 : 0 }); emit(ship ? 18 : how ? 16 : 5, x, y);
         rounds[i]--; timer[i] = wp.interval; continue;
       }
       if (ammo[i] === 0) ammo[i] = wp.mag;

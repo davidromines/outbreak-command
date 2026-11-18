@@ -6,6 +6,7 @@
 - Precision strike: area of effect +200% (radius 35 → 61 m); building damage still 35 m.
 - Sound mix: guns forward (×1.3–1.6), zombie voices and horde moan pushed back (quieter, darker, more reverb).
 - Stage 1 starting money 1200 → 800.
+- Mortar: area of effect +100% (radius 14 → 20 m); building damage still 14 m.
 
 ## v48 — 2026-11-16
 - Kills decide the game: each stage's population is capped (8k / 40k / 100k / 200k, was up to ~1M) so the player's arsenal can kill a real share of the horde.
